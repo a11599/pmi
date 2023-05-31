@@ -1,0 +1,4 @@
+# Copy to makeinit and adjust paths below according to your environment.
+
+nasm = nasm.exe
+wlink = wlink.exe

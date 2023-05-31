@@ -1,0 +1,11 @@
+@echo off
+
+rem Copy this file as test.bat and adjust for quick testing after running
+rem make.bat or makedb.bat.
+
+rem Set DPMI_PREFERRED to 1 in src\config.inc and uncomment following line to
+rem test DPMI mode under DOS:
+rem lib\cwsdpmi
+
+bin\pmi_dbg
+pause
