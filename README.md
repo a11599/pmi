@@ -137,8 +137,9 @@ When the news are about AI writing code by itself, it's time to show the middle 
 This isn't new, in fact this was the standard at the end of the DOS era and pretty much the only standard in current operating systems. PMI was written for multiple reasons:
 
 - 32-bit PE format support was either missing from most other protected mode hosts or supported the old DJGPP format only. I wanted to use Windows NT PE format.
-- Most hosts implement the DPMI API and have a built-in DOS extender. Many even support stuff such as virtual memory, DLL loading or some kind of Win32 API emulation. I don't want any of that bloat.
-- None of them can run under VCPI with paging disabled as far as I know. It was an old trick I used in my early-2000s DOS extenders and I wanted to do it again because it feels good. So I did it again.
+- Many hosts that do support 32-bit PE format use CPU features that aren't emulated well by DosBox (and thus won't work reliably).
+- Most hosts implement the DPMI API and have a built-in DOS extender. Many even support stuff such as virtual memory, DLL loading or some kind of Win32 API emulation (especially those that support 32-bit PE executables). I don't want any of that bloat.
+- None of them can run under VCPI with paging disabled as far as I know. It was an old trick I used in my early-2000s DOS extenders and I wanted to do it again because it feels good.
 - None of them have built-in support for DMA addressable memory block allocation.
 
 PMI is small, it only adds about 11.5 kbytes to your application (or about 14 kbytes when exception crash dump is enabled). Writing a protected mode application is simple, just create a PE executable and use pmi.exe as the MS-DOS (MZ EXE) stub. The API is simple: your application is provided with a jump table at GS:0 that you can use to call PMI's services.
@@ -150,25 +151,25 @@ This section is aimed at those who have experience with real mode segmented x86 
 
 ## What is protected mode?
 
-Protected mode was the native operating mode of 80286 and newer processors (these days it's considered a legacy mode, with 64-bit long mode being the native mode). It can be used to restrict applications accessing or writing memory areas it shouldn't. It also has mechanisms to recover from application faults so it won't bring down the entire operating system. These are extremely useful features for modern multitasking operating systems, but largely useless for single-user, single-application systems like the ones written for DOS.
+Protected mode was the native operating mode of 80286 and newer processors (these days it's considered a legacy mode, with 64-bit long mode being the native mode and Intel even considering removing these modes). It can be used to restrict applications accessing or writing memory areas it shouldn't. It also has mechanisms to recover from application faults so it won't bring down the entire operating system. These are extremely useful features for modern multitasking operating systems, but largely useless for single-user, single-application systems like DOS.
 
-Protected mode does have segments, but with a very different concept. Instead of pointing to an actual memory address, segment registers contain indexes (called selectors) to special tables called descriptors, which define the start address (base) and size (limit) of the segment to which the register points to. They also have several control flags to enable read/write, code execution, and so on, to implement protection.
+Protected mode does have segments, but with a very different concept. Instead of pointing to an actual memory address, segment registers contain indexes (called selectors) to special tables called descriptors, which define the start address (base) and size (limit) of the segment to which the register points to. They also have several control flags to enable read/write, code execution, and so on, to achieve memory protection.
 
 The true funkiness however started with the 80386, which was the first 32-bit processor of the x86 series. It has 32-bit registers and a 32-bit data bus, thus supporting up to 4 GB of memory. But the most important part is that the 80386's 32-bit protected mode can access the entire 4 GB address space without dealing with segments!
 
 ## What is a flat memory model?
 
-I think you can see where we are heading to. Yes, it is possible to set the base and size (limit) of these selectors so that each segment starts at address 0 and ends at 4 GB, thus you can access any memory by referencing its absolute address. When all common segment registers (CS, DS, ES and SS) are set up like that, you don't ever need to worry about segments when accessing memory, no matter what register you use as a base or index. Want to display a 320x200 256-color VGA image? No problem, just set ESI to point to the image in memory, EDI to `0xa0000` (address of the VGA frame buffer), ECX to `16000` and do a `REP MOVSD`. The image may be anywhere in memory.
+I think you can see where we are heading to. Yes, it is possible to set the base and size (limit) of these selectors so that each segment starts at address 0 and ends at 4 GB, thus you can access any memory by referencing its absolute address. When all common segment registers (CS, DS, ES and SS) are set up like that, you don't ever need to worry about segments when accessing memory, no matter what register you use as a base or index. Want to display a 320x200 256-color VGA image? No problem, just set ESI to point to the image in memory, EDI to `0xa0000` (address of the VGA frame buffer), ECX to `16000` and do a `REP MOVSD`. The source image may be anywhere in memory.
 
-Unfortunately, you can't really get the full potential within the realms of a traditional DOS .EXE file. Those were designed with real mode (traditional segmented memory access) in mind. .EXE files can have a self-contained protected mode host and can enter 32-bit protected mode and they can also setup flat memory data segments, but you cannot use them directly to access your program's code or data directly. .EXE files don't have relocation info for offsets within segments. That's why all flat model hosts/DOS extenders use some other executable format such as the OS/2 linear executable ("LE" or "LX") or the Windows portable executable ("PE"). My choice for PMI was 32-bit PE, which is a widespread format that is easy to write code for. PE was designed to run in the flat memory model from the ground up. PE files are compiled to run at a specific fixed address in memory, by default at 0x400000, or 4 MB. If PMI can allocate enough memory at this address (probably, if the machine has at least 8 GB RAM), the executable can be loaded very quickly. If the address is not available, the PE format includes all necessary relocations to alter the executable image's memory references so they will point to the correct memory address. This takes a little bit of time though (applications with lots of data access can have very large relocation tables). But PMI was written for assembly programs where you should use registers for as many operations as possible anyways.
+Unfortunately, you can't really get the full potential within the realms of a traditional DOS .EXE file. Those were designed with real mode (traditional segmented memory access) in mind. .EXE files can have a self-contained protected mode host and can enter 32-bit protected mode and they can also setup flat memory data segments, but you cannot use them directly to access your program's code or data directly. .EXE files don't have relocation info for offsets within segments. That's why all flat model hosts/DOS extenders use some other executable format such as the OS/2 linear executable ("LE" or "LX") or the Windows portable executable ("PE"). My choice for PMI was 32-bit PE, which is a widespread format that is easy to write code for and has good compiler/linker support. PE was designed to run in the flat memory model from the ground up. PE files are compiled to run at a specific fixed address in memory, by default at 0x400000, or 4 MB. If PMI can allocate enough memory at this address (probably, if the machine has at least 8 GB RAM), the executable can be loaded very quickly. If the address is not available, the PE format includes all necessary relocations to alter the executable image's memory references so they will point to the correct memory address. This takes a little bit of time though (applications with lots of data access can have very large relocation tables). But PMI was written for assembly programs where you should use registers for as many operations as possible anyways.
 
 ## What about that paging stuff?
 
-Paging was another new feature of the 80386. It's basically a way to translate memory from linear addresses (the addresses your program uses) to physical addresses (actual addresses of memory and other devices). Paging is extremely useful for real operating systems and can be used to map any physical memory at any linear address. For example, if the PE executable was compiled to run at address 0x400000, the OS can set up paging to have memory mapped at this address to prevent relocation.
+Paging was another new feature of the 80386. It's basically a way to translate memory from linear addresses (the addresses your program uses) to physical addresses (actual addresses of memory and memory-mapped devices). Paging is extremely useful for real operating systems and can be used to map any physical memory at any linear address. For example, if the PE executable was compiled to run at address 0x400000, the OS can set up paging to have memory mapped at this address to prevent relocation. Paging is also very useful to prevent memory fragmentation in multitasking environments.
 
 There are two problems with paging:
 
-- It's slow. Not by much, but still slower, than actual direct physical memory access, especially on old 80386 and 80486s. PMI was written for performance and absolutely targets these old platforms so it will not use paging when possible.
+- It's slow. Not by much, but still slower, than actual direct physical memory access, especially on old 80386 and 80486s. PMI was written for performance and absolutely targets these old platforms so it tries to avoid paging when possible.
 
 - ISA DMA. The PC's ISA DMA controllers were never updated to support the address translation of the CPU. These pesky devices were difficult enough to program already, but now it's further complicated by the fact that they still need to be programmed with physical memory addresses while your application can see totally different ones. There are several techniques to mitigate the side effects of paging, but to play audio, you need a nice contiguous physical memory area for ISA sound cards.
 
@@ -184,13 +185,15 @@ PMI does not provide a heap area to the application (no matter what is specified
 
 ## Interrupts
 
-CPU exceptions are handled by PMI or the DPMI host. Exceptions will terminate the PMI application and return control back to DOS. The debug version of PMI dumps registers and the top 64 bytes of stack when not running under DPMI.
+CPU exceptions are handled by PMI or the DPMI host when present. Exceptions will terminate the PMI application and return control back to DOS. The debug version of PMI dumps registers and the top 64 bytes of stack when not running under DPMI.
 
 Hardware interrupts (IRQs) are supported in protected mode. By default, the IRQ is handled by its real mode (DOS) handler. When a protected mode handler is installed, the handler may either handle the IRQ completely in protected mode, or pass it back to real mode by jumping to the previous IRQ handler. IRQ handlers are always called with a 32-bit stack frame and should return using a 32-bit iret (iretd).
 
 Hardware interrupt handlers are called directly, without any PMI code between the handler and the interrupt request, with the exception of IRQs 7 and 15. For these IRQs PMI will run a tiny piece of code which checks if the IRQ is spurious and ignores it in that case. Control will be transferred to the actual handler as quickly as possible.
 
-Hardware interrupt handlers should not make any assumptions on segment registers. Save the data segment selector and set it in the IRQ handler if write access is needed. The same goes for the stack segment, if you need a flat selector in the stack, setup your own stack within the IRQ handler. Hardware interrupt handlers should not call PMI services.
+Like in real mode, hardware interrupt handlers should not make any assumptions on segment registers when running under PMI. Save the data segment selector and set it in the IRQ handler if write access is needed. The same goes for the stack segment, if you need a flat selector in the stack, setup your own stack within the IRQ handler.
+
+Hardware interrupt handlers should not call PMI services.
 
 DOS Ctrl-Break (0x23) and critical error (0x24) handlers are redirected by PMI. The Ctrl-Break handler won't do anything (although the default ^C characters will be printed to stdout by DOS if you are doing any DOS console I/O). This won't happen when using the `keyboard` runtime library, because keystrokes won't reach the BIOS (and hence DOS). PMI's critical error handler sets the Carry flag and reports an access denied (0x05) error in AX to the caller (thus effectively failing the call).
 
@@ -210,13 +213,13 @@ The application may switch to a different stack at any time. The application may
 
 ## Application startup, termination
 
-Once PMI initialized the protected mode environment, it attempts to load the PE executable from the same .EXE file. PMI tries to allocate memory for the executable at its preferred base address (which is 0x400000 by default). If this address is not available, PMI will relocate it to a suitable memory block (if the system has not enough memory, PMI terminates with an error message).
+Once PMI initialized the protected mode environment, it attempts to load the PE executable from the same .EXE file. PMI tries to allocate memory for the executable at its preferred base address (which is 0x400000 by default), starting from the offset where the actual compiled code/data begins. If this address is not available, PMI will relocate it to a suitable memory block (if the system has not enough memory, PMI terminates with an error message).
 
 The executable gets control at its entry point with the following register values:
 
 - EAX, ECX, EDX, EBP: 0
 - EBX: Linear address of the DOS environment (a list of ASCIIZ key-value pairs, terminated with an empty string).
-- ESI: Linear address of the PE executable's ASCIIZ filename. For the application that was started by PMI, this will contain the full path specification of the file. Otherwise it's the same that was given by the caller of the execute service.
+- ESI: Linear address of the PE executable's ASCIIZ filename. For the application that was started by PMI, this will contain the full path specification of the file. Otherwise it's the same that was given by the caller of the `execute` service.
 - EDI: Linear address of ASCIIZ command line arguments.
 - CS:EIP: Program entry point.
 - SS:ESP: Top of stack allocated for the application.
@@ -233,7 +236,7 @@ When PMI terminates to DOS:
 - Timer frequency is reset to 18.2 Hz.
 - Running DMA transfers on channels with auto restart DMA (`PMI_DMA_AUTO`) are stopped.
 
-PMI applications cannot be installed as TSR programs. If your program needs to stay resident, then you probably need a DPMI-like extender anyways (or should not be using protected mode at all).
+PMI applications cannot be installed as TSR programs. If your program needs to stay resident, then you probably need a more advanced DPMI-like extender anyways (or should not be using protected mode at all).
 
 
 # Creating a PMI application
@@ -245,7 +248,7 @@ _Using NASM and the Watcom linker to create a "Hello world!" application._
 PMI was meant for applications written in assembly language. My choice of assembler is [NASM](https://www.nasm.us/):
 
 - It is free.
-- It is in active development and has been for decades. Back in the days I used Turbo Assembler, not sure what I could do with those sources other than to rewrite them if I wanted to use them again. From this perspective, I don't really mind that I lost them all during the last 20 or so years.
+- It is in active development and has been for decades.
 - It uses Intel syntax.
 - It is cross-platform (my primary development platform is DosBox on Windows, but I also want it to compile under DOS).
 - It has good local label support and a useful macro language.
@@ -309,7 +312,7 @@ To build the executable:
 wlink @hello.lnk
 ```
 
-Of course, you can (and should use) a makefile for larger projects. This was omitted here for simplicity. Check out the [pmi_app](../pmi_app) repository for a sample PMI application with a more complete template with DOS/Windows build environment setup.
+Of course, you can (and should use) a makefile for larger projects. This was omitted here for simplicity. Check out the [tmodplay](/a11599/tmodplay) repository for a PMI application with a more complete DOS/Windows build environment setup.
 
 The benefit of Win32 object format and PE flat memory executable is the obvious simplicity of the assembly source code. No need to use segment directives or groups. Just put all your code to `section .text`, data to `section .data` and uninitialized data to `section .bss`. The Win32 format automatically assumes and generates 32-bit code in all segments.
 
@@ -322,7 +325,7 @@ The hello world application above contains `call pmi()` instructions. The `pmi()
 
 ## Usage
 
-PMI provides a small, but useful set of services for 32-bit programs. The API is lightweight and kept to the minimum. All API services must be called using far calls. When the application starts, pointers to API services are provided in the GS segment.
+PMI provides a small, but useful set of services for 32-bit programs. The API is lightweight and kept to the minimum. All API services must be called using far calls. When the application starts, pointers to API services are provided in the GS segment selector.
 
 API services have a snake_case name and are defined in the `pmi_fns`
 structure:
@@ -704,7 +707,7 @@ Possible values for file access mode (AL) are combinations of:
 | 0x40  | `PMI_FILE_TRUNC`  | Overwrite the file if it exists. Prior to DOS 4.0, the file will be opened with `PMI_FILE_READ` and `PMI_FILE_WRITE` in this case. |
 | 0x80  | `PMI_FILE_COMMIT` | Commit (flush) file after each write. This option requires DOS 4.0 or newer (it's not effective in older DOS versions). |
 
-If neither `PMI_FILE_READ` or `PMI_FILE_WRITE` is specified, `PMI_FILE_READ` is assumed.
+If neither `PMI_FILE_READ`, nor `PMI_FILE_WRITE` is specified, `PMI_FILE_READ` is assumed.
 
 ### `file_close`
 
@@ -1407,8 +1410,8 @@ Possible values of `flags` are combination of:
 | value | name             | description |
 | ----- | ---------------- | ----------- |
 | 0x00  | `LOG_STDOUT`     | Output log to standard output (console). |
-| 0x00  | `LOG_STDERR`     | Output log to standard error output (console). |
-| 0x00  | `LOG_FILE`       | Output log to a file. `logfile` parameter is required in this case. |
+| 0x01  | `LOG_STDERR`     | Output log to standard error output (console). |
+| 0x02  | `LOG_FILE`       | Output log to a file. `logfile` parameter is required in this case. |
 | 0x04  | `LOG_AUTOCOMMIT` | Don't buffer log contents, always flush the target file after a log entry is written. Requires DOS 4.0 or newer. |
 | 0x08  | `LOG_APPEND`     | If the log file already exists, append entries insted of overwriting existing contents. |
 
@@ -1921,7 +1924,7 @@ A somewhat unique feature (at least I haven't heard of any other DOS extenders d
 - The VCPI host uses identity mapping for memory below 640 KB. In other words, the linear addresses are identical to physical addresses.
 - The application is loaded to memory below 640 KB (not using loadhigh).
 
-This might sound restrictive, but when EMS is provided using MS-DOS HIMEM.SYS and EMM386.EXE, the above conditions are met as long as the PMI application is not loaded into UMB (which DOS won't do unless requested).
+This might sound restrictive, but when EMS is provided using MS-DOS HIMEM.SYS and EMM386.EXE, the above conditions are met as long as the PMI application is not loaded into UMB (which DOS won't do unless explicitly requested).
 
 ## Memory management
 
@@ -1968,13 +1971,13 @@ Default protected mode IRQ handlers are reflectors, which switch back to real mo
 
 However once a protected mode IRQ handler is installed, these real mode interrupt handlers will be changed to point to a reflector, which switches to protected mode and invokes the protected mode IRQ handler. The custom IRQ handler can reflect the IRQ back to its original real mode handler by jumping to the original protected mode IRQ handler code. When the custom IRQ handler is uninstalled, the corresponding real mode reflector is also restored to the redirector code.
 
-PMI installs a very tiny prologue for IRQs 7 and 15 to handle spurious IRQs. This prologue is also installed under DPMI even though many DPMI hosts already deal with the problem internally. Unfortunately, this is not mandated by the specification, so it wouldn't be safe to not check this scenario under DPMI as well. The overhead is minimal and the frequency if these IRQs is not very high so it's an acceptable tradeoff.
+PMI installs a very tiny prologue for IRQs 7 and 15 to handle spurious IRQs. This prologue is also installed under DPMI even though many DPMI hosts already deal with the problem internally. Unfortunately, this is not mandated by the specification, so it wouldn't be safe to not check this scenario under DPMI as well. The overhead is minimal and the frequency of these IRQs is not very high so it's an acceptable tradeoff.
 
 PMI won't setup flat memory model data segment registers for IRQ handlers automatically, the application must do it within the handler itself as needed. Remember that the PMI API requires flat data selectors for DS and ES and the PMI runtime library also requires GS:0 to point to the PMI API jump table. But you should not really call any of them from an IRQ handler.
 
 ## System registers, tables
 
-PMI does not support selector manipulation for applications. It's not necessary due to the flat memory model these applications are executed.
+PMI does not support selector manipulation for applications. It's not necessary due to the flat memory model these applications are executed in.
 
 In raw and VCPI mode, PMI sets up only a GDT with the bare minimum of required selectors.
 
@@ -2019,7 +2022,7 @@ To build a custom `pmi.exe` binary:
   - `nasm`: Path to nasm.exe (NASM binary).
   - `wlink`: Path to wlink.exe (Open Watcom linker).
   - If both of them are added to system `PATH`, you can leave `makeinit` as-is.
-- Run `wmake` to create a debug-enabled build as `bin\pmi.exe` or `wmake release` to create a a debug-enabled build as `bin\pmi_dbg.exe` and a clean release build as `bin\pmi.exe`.
+- Run `wmake` to create a debug-enabled build as `bin\pmi_dbg.exe` or `wmake release` to create a release build as `bin\pmi.exe`.
 
 To test PMI:
 - Copy `test_bat.sam` to `test.bat`
