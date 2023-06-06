@@ -312,7 +312,7 @@ To build the executable:
 wlink @hello.lnk
 ```
 
-Of course, you can (and should use) a makefile for larger projects. This was omitted here for simplicity. Check out the [tmodplay](/a11599/tmodplay) repository for a PMI application with a more complete DOS/Windows build environment setup.
+Of course, you can (and should use) a makefile for larger projects. This was omitted here for simplicity. Check out the [tmodplay](https://github.com/a11599/tmodplay) repository for a PMI application with a more complete DOS/Windows build environment setup.
 
 The benefit of Win32 object format and PE flat memory executable is the obvious simplicity of the assembly source code. No need to use segment directives or groups. Just put all your code to `section .text`, data to `section .data` and uninitialized data to `section .bss`. The Win32 format automatically assumes and generates 32-bit code in all segments.
 
