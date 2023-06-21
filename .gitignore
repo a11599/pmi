@@ -1,6 +1,5 @@
-/bin
-/obj
-/rtl
+/build
+/dist
 /tools
 /makeinit
 /test.bat

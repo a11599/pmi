@@ -7,5 +7,5 @@ rem Set DPMI_PREFERRED to 1 in src\config.inc and uncomment following line to
 rem test DPMI mode under DOS:
 rem lib\cwsdpmi
 
-bin\pmi_dbg
+build\debug\pmi
 pause

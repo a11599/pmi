@@ -291,7 +291,7 @@ hello_world     db 'Hello world!', 13, 10
 
 ```
 NAME hello
-OPTION stub={path\to\pmi}\bin\pmi.exe
+OPTION stub={path\to\pmi}\build\debug\pmi.exe
 OPTION start=_main
 OPTION stack=4096
 FORM Windows NT TNT
@@ -2019,10 +2019,15 @@ To build a custom `pmi.exe` binary:
 - Install [NASM](https://nasm.us).
 - Install [Open Watcom](https://www.openwatcom.org/) tools.
 - Copy `makeinit.sam` to `makeinit` and set the following parameters:
-  - `nasm`: Path to nasm.exe (NASM binary).
-  - `wlink`: Path to wlink.exe (Open Watcom linker).
-  - If both of them are added to system `PATH`, you can leave `makeinit` as-is.
-- Run `wmake` to create a debug-enabled build as `bin\pmi_dbg.exe` or `wmake release` to create a release build as `bin\pmi.exe`.
+  - `nasm_dir`: Path to directory containing nasm.exe (NASM binary).
+  - `watcom_dir`: Path to directory containing Open Watcom platform-dependent binaries.
+  - If both of them are added to system `PATH`, you don't need to create a `makeinit` file.
+- Run `wmake` to create a debug-enabled build to `build\debug\pmi.exe` and to compile the runtime library to `build\debug\rtl`.
+- Run `wmake build=release` to create a release build to `build\release\pmi.exe` and to compile the runtime library to `build\release\rtl`.
+- Further `wmake` targets (append after `wmake` or `wmake build=release`) are:
+  - `clean`: Remove compiled binaries in `build\debug` or `build\release` directory.
+  - `full`: Force a full recompilation (compilation by default is incremental, only changed source code is recompiled).
+  - `dist`: Create a binary distribution package to `dist` directory.
 
 To test PMI:
 - Copy `test_bat.sam` to `test.bat`

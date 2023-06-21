@@ -4,10 +4,9 @@
     "editor.rulers": [80],
     "files.exclude": {
         "dist/": true,
-        "obj/": true,
-        "pcem/": true,
-        "scratch/": true,
-        "dosbox-x.conf": true
+        "build/": true,
+        "lib/": true,
+        "tools/": true
     },
     "files.trimTrailingWhitespace": true
 }
