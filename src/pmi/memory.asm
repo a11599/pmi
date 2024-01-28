@@ -787,6 +787,3 @@ mem_merge_blocks:
 .error:
 	stc
 	jmp .exit
-
-term:
-jmp PMI_FN(terminate)
