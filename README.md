@@ -7,7 +7,7 @@ _a minimalist host environment for flat memory model 32-bit DOS applications_
 
 - Compatible with DPMI and VCPI
 - Built-in protected mode host when neither DPMI, nor VCPI is present
-- Small (around 11.5k uncompressed without exception dump)
+- Small (around 11.5k uncompressed with exception dumping disabled)
 - Built for speed (can disable paging under VCPI when certain conditions are met)
 - Runs applications in 32-bit flat memory model in PE executable format
 - Written in assembly for assembly programs
@@ -147,7 +147,7 @@ PMI is small, it only adds about 11.5 kbytes to your application (or about 14 kb
 
 # 32-bit protected mode primer
 
-This section is aimed at those who have experience with real mode segmented x86 assembly, but haven't coded in protected mode and/or under a flat memory model yet.
+This section is aimed for those who have experience with real mode segmented x86 assembly, but haven't coded in protected mode and/or under a flat memory model yet.
 
 ## What is protected mode?
 
@@ -159,13 +159,13 @@ The true funkiness however started with the 80386, which was the first 32-bit pr
 
 ## What is a flat memory model?
 
-I think you can see where we are heading to. Yes, it is possible to set the base and size (limit) of these selectors so that each segment starts at address 0 and ends at 4 GB, thus you can access any memory by referencing its absolute address. When all common segment registers (CS, DS, ES and SS) are set up like that, you don't ever need to worry about segments when accessing memory, no matter what register you use as a base or index. Want to display a 320x200 256-color VGA image? No problem, just set ESI to point to the image in memory, EDI to `0xa0000` (address of the VGA frame buffer), ECX to `16000` and do a `REP MOVSD`. The source image may be anywhere in memory.
+I think you can see where we are heading to. Yes, it is possible to set the base and size (limit) of these selectors so that each segment starts at address 0 and ends at 4 GB, thus you can access any memory by referencing its absolute address. When all common segment registers (`CS`, `DS`, `ES` and `SS`) are set up like that, you don't ever need to worry about segments when accessing memory, no matter what register you use as a base or index. Want to display a 320x200 256-color VGA image? No problem, just set `ESI` to point to the image in memory, `EDI` to `0xa0000` (address of the VGA frame buffer), `ECX` to `16000` and do a `REP MOVSD`. The source image may be anywhere in memory.
 
-Unfortunately, you can't really get the full potential within the realms of a traditional DOS .EXE file. Those were designed with real mode (traditional segmented memory access) in mind. .EXE files can have a self-contained protected mode host and can enter 32-bit protected mode and they can also setup flat memory data segments, but you cannot use them directly to access your program's code or data directly. .EXE files don't have relocation info for offsets within segments. That's why all flat model hosts/DOS extenders use some other executable format such as the OS/2 linear executable ("LE" or "LX") or the Windows portable executable ("PE"). My choice for PMI was 32-bit PE, which is a widespread format that is easy to write code for and has good compiler/linker support. PE was designed to run in the flat memory model from the ground up. PE files are compiled to run at a specific fixed address in memory, by default at 0x400000, or 4 MB. If PMI can allocate enough memory at this address (probably, if the machine has at least 8 GB RAM), the executable can be loaded very quickly. If the address is not available, the PE format includes all necessary relocations to alter the executable image's memory references so they will point to the correct memory address. This takes a little bit of time though (applications with lots of data access can have very large relocation tables). But PMI was written for assembly programs where you should use registers for as many operations as possible anyways.
+Unfortunately, you can't really get the full potential within the realms of a traditional DOS .EXE file. Those were designed with real mode (traditional segmented memory access) in mind. .EXE files can have a self-contained protected mode host and can enter 32-bit protected mode and they can also setup flat memory data segments, but you cannot use them directly to access your program's code or data. .EXE files don't have relocation info for offsets within segments, therefore you need to use code and data selectors that point to the actual starting address of the program's code and data segments in order to not break any absolute offsets compiled into the code. That's why all flat model hosts/DOS extenders use some other executable format such as the OS/2 linear executable ("LE" or "LX") or the Windows portable executable ("PE"). My choice for PMI was 32-bit PE, which is a widespread format that is easy to write code for and has good compiler/linker support. PE was designed to run in the flat memory model from the ground up. PE files are compiled to run at a specific fixed address in memory, by default at `0x400000`, or 4 MB. If PMI can allocate enough memory at this address (probably, if the machine has at least 8 MB RAM), the executable can be loaded very quickly. If the address is not available, the PE format includes all necessary relocations to alter the executable image's memory references so they will point to the correct memory address. This takes a little bit of time though (applications with lots of data access can have very large relocation tables). But PMI was written for assembly programs where you should use registers for as many operations as possible anyways.
 
 ## What about that paging stuff?
 
-Paging was another new feature of the 80386. It's basically a way to translate memory from linear addresses (the addresses your program uses) to physical addresses (actual addresses of memory and memory-mapped devices). Paging is extremely useful for real operating systems and can be used to map any physical memory at any linear address. For example, if the PE executable was compiled to run at address 0x400000, the OS can set up paging to have memory mapped at this address to prevent relocation. Paging is also very useful to prevent memory fragmentation in multitasking environments.
+Paging was another new feature of the 80386. It's basically a way to translate memory from linear addresses (the addresses your program uses) to physical addresses (actual addresses of memory and memory-mapped devices). Paging is extremely useful for real operating systems and can be used to map any physical memory at any linear address. For example, if the PE executable was compiled to run at address `0x400000`, the OS can set up paging to have memory mapped at this address to prevent relocation. Paging is also very useful to prevent memory fragmentation in multitasking environments.
 
 There are two problems with paging:
 
@@ -185,7 +185,7 @@ PMI does not provide a heap area to the application (no matter what is specified
 
 ## Interrupts
 
-CPU exceptions are handled by PMI or the DPMI host when present. Exceptions will terminate the PMI application and return control back to DOS. The debug version of PMI dumps registers and the top 64 bytes of stack when not running under DPMI.
+CPU exceptions are handled by PMI or the DPMI host when present. Exceptions will terminate the PMI application and return control back to DOS. The debug version of PMI dumps registers and the top 64 bytes of the stack when not running under DPMI.
 
 Hardware interrupts (IRQs) are supported in protected mode. By default, the IRQ is handled by its real mode (DOS) handler. When a protected mode handler is installed, the handler may either handle the IRQ completely in protected mode, or pass it back to real mode by jumping to the previous IRQ handler. IRQ handlers are always called with a 32-bit stack frame and should return using a 32-bit iret (iretd).
 
@@ -195,7 +195,7 @@ Like in real mode, hardware interrupt handlers should not make any assumptions o
 
 Hardware interrupt handlers should not call PMI services.
 
-DOS Ctrl-Break (0x23) and critical error (0x24) handlers are redirected by PMI. The Ctrl-Break handler won't do anything (although the default ^C characters will be printed to stdout by DOS if you are doing any DOS console I/O). This won't happen when using the `keyboard` runtime library, because keystrokes won't reach the BIOS (and hence DOS). PMI's critical error handler sets the Carry flag and reports an access denied (0x05) error in AX to the caller (thus effectively failing the call).
+DOS Ctrl-Break (`0x23`) and critical error (`0x24`) handlers are redirected by PMI. The Ctrl-Break handler won't do anything (although the default ^C characters will be printed to stdout by DOS if you are doing any DOS console I/O). This won't happen when using the `keyboard` runtime library, because keystrokes won't reach the BIOS (and hence DOS). PMI's critical error handler sets the Carry flag and reports an access denied (`0x05`) error in `AX` to the caller (thus effectively failing the call).
 
 PMI does not support software interrupts in protected mode. Existing real mode software interrupts can be called using the call_rm service.
 
@@ -213,19 +213,19 @@ The application may switch to a different stack at any time. The application may
 
 ## Application startup, termination
 
-Once PMI initialized the protected mode environment, it attempts to load the PE executable from the same .EXE file. PMI tries to allocate memory for the executable at its preferred base address (which is 0x400000 by default), starting from the offset where the actual compiled code/data begins. If this address is not available, PMI will relocate it to a suitable memory block (if the system has not enough memory, PMI terminates with an error message).
+Once PMI initialized the protected mode environment, it attempts to load the PE executable from the same .EXE file. PMI tries to allocate memory for the executable at its preferred base address (which is `0x400000` by default), starting from the offset where the actual compiled code/data begins. If this address is not available, PMI will relocate it to a suitable memory block (if the system has not enough memory, PMI terminates with an error message).
 
 The executable gets control at its entry point with the following register values:
 
-- EAX, ECX, EDX, EBP: 0
-- EBX: Linear address of the DOS environment (a list of ASCIIZ key-value pairs, terminated with an empty string).
-- ESI: Linear address of the PE executable's ASCIIZ filename. For the application that was started by PMI, this will contain the full path specification of the file. Otherwise it's the same that was given by the caller of the `execute` service.
-- EDI: Linear address of ASCIIZ command line arguments.
-- CS:EIP: Program entry point.
-- SS:ESP: Top of stack allocated for the application.
-- GS: PMI public API jump table segment (pmi_fns structure instance).
-- CS: Flat 32-bit code segment (base: 0, size: 4 GB).
-- DS, ES, FS, SS: Flat data and 32-bit stack segment (base: 0, size: 4 GB).
+- `EAX`, `ECX`, `EDX`, `EBP`: 0
+- `EBX`: Linear address of the DOS environment (a list of ASCIIZ key-value pairs, terminated with an empty string).
+- `ESI`: Linear address of the PE executable's ASCIIZ filename. For the application that was started by PMI, this will contain the full path specification of the file. Otherwise it's the same that was given by the caller of the `execute` service.
+- `EDI`: Linear address of ASCIIZ command line arguments.
+- `CS:EIP`: Program entry point.
+- `SS:ESP`: Top of stack allocated for the application.
+- `GS`: PMI public API jump table segment (`pmi_fns` structure instance).
+- `CS`: Flat 32-bit code segment (base: 0, size: 4 GB).
+- `DS`, `ES`, `FS`, `SS`: Flat data and 32-bit stack segment (base: 0, size: 4 GB).
 
 Applications shall use the `terminate` PMI service to exit. The `execute` service can be used to run another application. When an application terminates, control is given back to the application that started it. If there is no parent application, control is passed back to PMI which terminates to DOS.
 
@@ -261,9 +261,9 @@ For building and linking I prefer using wmake and wlink from [Open Watcom](https
 - It is cross-platform (see reasons above).
 - It can build PE executables for Phar Lap TNT DOS extender, which is just a standard Win32 PE with PL signature. This means Windows won't try to execute the PMI application and there is no need to patch the binary after the build process.
 
-To create a "Hello world!" application, you need the assembly source code (hello.asm) and a linker directive file (hello.lnk). The contents of these two files are provided below.
+To create a "Hello world!" application, you need the assembly source code (`hello.asm`) and a linker directive file (`hello.lnk`). The contents of these two files are provided below.
 
-### hello.asm
+### `hello.asm`
 
 ```nasm
         cpu 386
@@ -287,7 +287,7 @@ hello_world     db 'Hello world!', 13, 10
                 HELLO_WORLD_SIZE EQU $ - hello_world
 ```
 
-### hello.lnk
+### `hello.lnk`
 
 ```
 NAME hello
@@ -312,11 +312,11 @@ To build the executable:
 wlink @hello.lnk
 ```
 
-Of course, you can (and should use) a makefile for larger projects. This was omitted here for simplicity. Check out the [tmodplay](https://github.com/a11599/tmodplay) repository for a PMI application with a more complete DOS/Windows build environment setup.
+Of course, you can (and should) use a makefile for larger projects. This was omitted here for simplicity. Check out the [tmodplay](https://github.com/a11599/tmodplay) repository for a PMI application with a more complex DOS/Windows build environment setup.
 
 The benefit of Win32 object format and PE flat memory executable is the obvious simplicity of the assembly source code. No need to use segment directives or groups. Just put all your code to `section .text`, data to `section .data` and uninitialized data to `section .bss`. The Win32 format automatically assumes and generates 32-bit code in all segments.
 
-Linker options are also pretty simple. Set the stub option to pmi.exe, the start option to the global label for your application entry point, stack to the amount of wanted stack space. Use either `Windows NT` or `Windows NT TNT` form. PMI supports both, but you need to use `Windows NT TNT` if the application must be compatible with Windows DOS boxes (otherwise Windows will try to execute the PE itself which will probably generate a fault pretty soon).
+Linker options are also pretty simple. Set the stub option to `pmi.exe`, the start option to the global label for your application entry point, stack to the amount of wanted stack space. Use either `Windows NT` or `Windows NT TNT` form. PMI supports both, but you need to use `Windows NT TNT` if the application must be compatible with Windows DOS boxes (otherwise Windows will try to execute the PE itself which will probably generate a fault pretty soon).
 
 The hello world application above contains `call pmi()` instructions. The `pmi()` macro is defined in `pmi.inc` and provides a convenient way to call PMI services from your application. See the chapter below on PMI's API and the `pmi.inc` include file.
 
@@ -325,7 +325,7 @@ The hello world application above contains `call pmi()` instructions. The `pmi()
 
 ## Usage
 
-PMI provides a small, but useful set of services for 32-bit programs. The API is lightweight and kept to the minimum. All API services must be called using far calls. When the application starts, pointers to API services are provided in the GS segment selector.
+PMI provides a small, but useful set of services for 32-bit programs. The API is lightweight and kept to the minimum. All API services must be called using far calls. When the application starts, pointers to API services are provided in the `GS` segment selector.
 
 API services have a snake_case name and are defined in the `pmi_fns`
 structure:
@@ -351,11 +351,11 @@ structure:
 | 0x80     | `dma_start`        | Start DMA transfer in specific channel |
 | 0x88     | `dma_stop`         | Stop DMA transfer in specific channel |
 
-PMI services are not reentrant, but you should be fine as long as you avoid calling them from hardware interrupt handlers. All services expect flat memory model segments for DS and ES and a valid stack at SS:ESP with at least 256 bytes available. This is normally not an issue because there is no need to change any of these registers and the services should not be called from IRQ handlers anyways.
+PMI services are not reentrant, but you should be fine as long as you avoid calling them from hardware interrupt handlers. All services expect flat memory model segments in `DS` and `ES` and a valid stack at `SS:ESP` with at least 256 bytes available. This is normally not an issue because there is no need to change any of these registers and the services should not be called from IRQ handlers anyways.
 
 ## Error handling
 
-API services that may fail will set the carry flag to indicate an error condition and EAX will be set to a PMI, DOS or DPMI error code. Some services return a PMI or DOS error code in AH. There is no clash, because each error code has a unique recognizable characteristic:
+API services that may fail will set the carry flag to indicate an error condition and `EAX` will be set to a PMI, DOS or DPMI error code. Some services return a PMI or DOS error code in `AH`. There is no clash, because each error code has a unique recognizable characteristic:
 
 - PMI error codes are negative.
 - DOS error codes are 8-bit positive and <= 0x12.
@@ -373,11 +373,11 @@ List of PMI error codes returned to PMI applications:
 
 There are also other error codes, but those are only used internally and won't be returned by the API.
 
-## pmi.inc
+## `pmi.inc`
 
 The `pmi.inc` include file in the `src\pmi\api` folder contains definitions of PMI constants and structures for NASM. Constants are all uppercase, structures are all lowercase with snake_case naming.
 
-The `pmi(fn)` macro can be used to conveniently call PMI services from the application as long as the GS register points to the PMI public API jump table. The macro doesn't contain the call instruction itself for the sake of better readability of the appliction source code.
+The `pmi(fn)` macro can be used to conveniently call PMI services from the application as long as the `GS` register points to the PMI public API jump table. The macro doesn't contain the call instruction itself for the sake of better readability of the application source code.
 
 _Example: Terminate PMI application._
 
@@ -403,7 +403,7 @@ None.
 
 Outputs:
 
-- EBX: Linear address of `pmi_env_info` structure.
+- `EBX`: Linear address of `pmi_env_info` structure.
 
 The `pmi_env_info` structure consists of the following members:
 
@@ -414,12 +414,12 @@ The `pmi_env_info` structure consists of the following members:
 | 0x08   | `xmb_base`      | 4    | Linear address of the extended memory area. This is only provided for information purposes, always use PMI memory management services for memory block allocations. |
 | 0x0c   | `xmb_size`      | 4    | Size of the extended memory area. |
 | 0x10   | `psp_addr`      | 4    | Linear address of the DOS PSP segment for the current PMI application. |
-| 0x14   | `pcb_addr`      | 4    | Linear address of currently running PMI application's program control block. Definition of this structure is available in `src\structs\program.inc`. |
+| 0x14   | `pcb_addr`      | 4    | Linear address of the currently running PMI application's program control block. Definition of this structure is available in `src\structs\program.inc`. |
 | 0x18   | `io_buf_addr`   | 4    | Linear address of I/O buffer used by file services for DOS address translation. 0 if the buffer is not currently allocated. |
-| 0x1c   | `io_buf_size`   | 4    | Size of the I/O buffer used by file services for DOS address translation, if allocated (`io_buf_addr` is not zero). |
-| 0x20   | `dos_ver`       | 2    | Version of DOS. High byte is major, low byte is minor version. Check this before relying on and DOS 2.0+ feature. |
+| 0x1c   | `io_buf_size`   | 4    | Size of the the I/O buffer used by file services for DOS address translation, if allocated (`io_buf_addr` is not zero). |
+| 0x20   | `dos_ver`       | 2    | Version of DOS. High byte is major, low byte is minor version. Check this before relying on any DOS feature introduced after version 2.0. |
 | 0x22   | `pm_host_type`  | 1    | Type of the protected mode host environment, see `PMI_HOST_*` constants below. |
-| 0x23   | `startup_vmode` | 1    | Video mode that was active before the PMI application was started. You can use this information when setting a different mode to restore the original mode before terminating your application (PMI won't do this unless it's terminating due to an exception or panic situation). |
+| 0x23   | `startup_vmode` | 1    | Video mode that was active before the PMI application was started. You can use this information to restore the original mode before terminating your application (PMI won't do this unless it's terminating due to an exception or panic situation). |
 
 Possible values for `pm_host_type` member:
 
@@ -437,13 +437,13 @@ Call a far real mode procedure which shall return with retf or a real mode inter
 
 Inputs:
 
-- EAX, EBX, ECX, EDX, ESI, EDI, EBP, flags: Passed to real mode procedure.
-- SS:ESP: Pointer to `pmi_rm_call` structure.
+- `EAX`, `EBX`, `ECX`, `EDX`, `ESI`, `EDI`, `EBP`, flags: Passed to real mode procedure.
+- `SS:ESP`: Pointer to `pmi_rm_call` structure.
 
 Outputs:
 
-- EAX, EBX, ECX, EDX, ESI, EDI, EBP, flags: Passed from real mode procedure.
-- SS:ESP: `pmi_rm_call` structure updated with new segment register values.
+- `EAX`, `EBX`, `ECX`, `EDX`, `ESI`, `EDI`, `EBP`, flags: Passed from real mode procedure.
+- `SS:ESP`: `pmi_rm_call` structure updated with new segment register values.
 
 The `pmi_rm_call` structure is 16 bytes long.
 
@@ -454,10 +454,10 @@ The `pmi_rm_call` structure is 16 bytes long.
 | 0x02   | `error_code` | 2    | PMI, MS-DOS or DPMI error code if theoperation fails. Currently this can only failunder DPMI. If successful, it's set to 0. |
 | 0x04   | `ip`         | 2    | Offset of the real mode procedure for `PMI_CALL_FAR`. |
 | 0x06   | `cs`         | 2    | Real mode segment of the real mode procedure for `PMI_CALL_FAR`. |
-| 0x08   | `ds`         | 2    | Real mode segment for DS register. |
-| 0x0a   | `es`         | 2    | Real mode segment for ES register. |
-| 0x0c   | `fs`         | 2    | Real mode segment for FS register. |
-| 0x0e   | `gs`         | 2    | Real mode segment for GS register. |
+| 0x08   | `ds`         | 2    | Real mode segment for `DS` register. |
+| 0x0a   | `es`         | 2    | Real mode segment for `ES` register. |
+| 0x0c   | `fs`         | 2    | Real mode segment for `FS` register. |
+| 0x0e   | `gs`         | 2    | Real mode segment for `GS` register. |
 
 Possible values for flags:
 
@@ -467,7 +467,7 @@ Possible values for flags:
 | 0x01  | `PMI_CALL_INT` | Real mode interrupt. |
 
 _Example: Read 4096 bytes from file into conventional memory buffer
-allocated via mem_alloc service, pointed to by EAX._
+allocated via `mem_alloc` service, pointed to by `EAX`._
 
 ```nasm
         %include pmi/api/pmi.inc
@@ -496,14 +496,14 @@ Get the current handler of a hardware interrupt (IRQ).
 
 Inputs:
 
-- AL: Number of hardware interrupt (IRQ).
+- `AL`: Number of hardware interrupt (IRQ), 0 - 15.
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF set.
-- AL: Number of hardware interrupt (IRQ) where the request is served. Same as input AL, except for IRQ 2. In that case AL will contain 9, since IRQ 2 is served on IRQ 9 due to chaining of the hardware interrupt controllers.
-- CX:EDX: Selector:offset of the current interrupt handler. Jump to this address from your protected mode IRQ handler if you want to reflect the IRQ to real mode.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` set.
+- `AL`: Number of hardware interrupt (IRQ) where the request is served. Same as input `AL`, except for IRQ 2. In that case `AL` will contain 9, since IRQ 2 is served on IRQ 9 due to chaining of the hardware interrupt controllers.
+- `CX:EDX`: Selector:offset of the current interrupt handler. Jump to this address from your protected mode IRQ handler if you want to reflect the IRQ to real mode.
 
 See the `set_irq_hndlr` service for example.
 
@@ -513,14 +513,14 @@ Set the current handler of a hardware interrupt (IRQ).
 
 Inputs:
 
-- AL: Number of hardware interrupt (IRQ).
-- CX:EDX: Selector:offset of the new interrupt handler. Normally CX is the same as CS for custom IRQ handlers.
+- `AL`: Number of hardware interrupt (IRQ), 0 - 15.
+- `CX:EDX`: Selector:offset of the new interrupt handler. Normally `CX` is the same as `CS` for custom IRQ handlers.
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF set.
-- AL: Number of hardware interrupt (IRQ) where the request is served. Same as input AL, except for IRQ 2. In that case AL will contain 9, since IRQ 2 is served on IRQ 9 due to chaining of the hardware interrupt controllers.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` set.
+- `AL`: Number of hardware interrupt (IRQ) where the request is served. Same as input `AL`, except for IRQ 2. In that case `AL` will contain 9, since IRQ 2 is served on IRQ 9 due to chaining of the hardware interrupt controllers.
 
 _Example: Install a custom handler for IRQ 0 (timer interrupt). Do some dummy update in video memory to provide visual feedback that it works and reflect back to the real mode handler. Wait for a keystroke, then restore the original IRQ handler._
 
@@ -573,19 +573,19 @@ PMI programs can launch other applications or terminate using these services. Th
 
 ### `execute`
 
-Load and run a PE executable. The executable will start with the same environment as the "main" PE executable attached to the PMI stub.
+Load and run a PE executable. The executable will start with the same environment as the main PE executable attached to the PMI stub.
 
 Inputs:
 
-- EBX: Position within the file where the executable starts. Useful for binary bundles when multiple application files are packed into a single file for easier distribution. If the file is a standalone PE file (with or without MZ .EXE stub), EBX should be set to 0. The MZ .EXE stub will be skipped.
-- ESI: Linear address of the PE executable's ASCIIZ filename.
-- EDI: Linear address of ASCIIZ command line arguments.
+- `EBX`: Position within the file where the executable starts. Useful for binary bundles when multiple application files are packed into a single file for easier distribution. If the file is a standalone PE file (with or without MZ .EXE stub), `EBX` should be set to 0. The MZ .EXE stub will be skipped.
+- `ESI`: Linear address of the PE executable's ASCIIZ filename.
+- `EDI`: Linear address of ASCIIZ command line arguments.
 
 Outputs:
 
-- CF: Set if failed.
-- AH: Error code if CF set or 0 when successful.
-- AL: Exit code if successful or 0 when failed.
+- `CF`: Set if failed.
+- `AH`: Error code if `CF` set or 0 when successful.
+- `AL`: Exit code if successful or 0 when failed.
 
 _Example: Run `PART2.EXE`._
 
@@ -613,11 +613,11 @@ null_str        db 0
 
 ### `terminate`
 
-Terminate the currently running PMI application. If this was the original application attached to the pmi.exe stub, control will be given back to DOS.
+Terminate the currently running PMI application. If this was the original application attached to the `pmi.exe` stub, control will be given back to DOS.
 
 Inputs:
 
-- AL: Program exit code.
+- `AL`: Program exit code.
 
 Outputs:
 
@@ -636,14 +636,14 @@ pool.
 
 Inputs:
 
-- AL: Allocation mode. See `PMI_MEM_*` constants below.
-- ECX: Size of memory block to allocate in bytes.
+- `AL`: Allocation mode. See `PMI_MEM_*` constants below.
+- `ECX`: Size of memory block to allocate in bytes.
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF set or linear address of allocated memory block.
-- EBX: Physical address of memory block when allocating memory for DMA. Might be identical to linear address.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` set or linear address of allocated memory block.
+- `EBX`: Physical address of memory block when allocating memory for DMA. Might be identical to linear address.
 
 Possible values for allocation mode (AL):
 
@@ -666,12 +666,12 @@ Release a memory block previously allocated by `mem_alloc`.
 
 Inputs:
 
-- EAX: Linear address of memory block.
+- `EAX`: Linear address of memory block.
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF set.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` set.
 
 Attempting to free a memory block which was already freed before will
 return as successful, but won't do anything (as long as the block's
@@ -681,7 +681,7 @@ internal data structure is intact).
 
 PMI is not a DOS extender. File operations are only provided because most of these services had to be implemented for the PE loader anyways and it made sense to provide a minimum working set and expose them as generic services through the API.
 
-All functions accept 32-bit pointers and values which is translated for DOS. Otherwise, the services behave exactly as their orresponding DOS functions.
+All functions accept 32-bit pointers and values which are translated for DOS. Otherwise, the services behave exactly as their orresponding DOS functions.
 
 ### `file_open`
 
@@ -689,15 +689,15 @@ Open/create a file for reading and/or writing.
 
 Inputs:
 
-- AL: File access mode, see `PMI_FILE_*` constants below.
-- EBX: Linear address of ASCIIZ filename.
+- `AL`: File access mode, see `PMI_FILE_*` constants below.
+- `EBX`: Linear address of ASCIIZ filename.
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF set or file handle when successful.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` set or file handle when successful.
 
-Possible values for file access mode (AL) are combinations of:
+Possible values for file access mode (`AL`) are combinations of:
 
 | value | name              | description |
 | ----- | ----------------- | ----------- |
@@ -715,12 +715,12 @@ Flush buffers and close a previously open file.
 
 Inputs:
 
-- EBX: File handle.
+- `EBX`: File handle.
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF set.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` set.
 
 ### `file_read`
 
@@ -728,14 +728,14 @@ Read data from a file opened with `PMI_FILE_READ`.
 
 Inputs:
 
-- EBX: File handle.
-- ECX: Number of bytes to read from the file.
-- EDI: Linear address of buffer receiving file data.
+- `EBX`: File handle.
+- `ECX`: Number of bytes to read from the file.
+- `EDI`: Linear address of buffer receiving file data.
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF set or number of bytes read from the file.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` set or number of bytes read from the file.
 
 ### `file_write`
 
@@ -743,14 +743,14 @@ Write data to a file opened with `PMI_FILE_WRITE`.
 
 Inputs:
 
-- EBX: File handle.
-- ECX: Number of bytes to read from the file.
-- ESI: Linear address of buffer containing data to write.
+- `EBX`: File handle.
+- `ECX`: Number of bytes to read from the file.
+- `ESI`: Linear address of buffer containing data to write.
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF set or number of bytes written to the file.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` set or number of bytes written to the file.
 
 ### `file_set_pos`
 
@@ -758,16 +758,16 @@ Set the read/write position of a file (seek).
 
 Inputs:
 
-- AL: Origin from which the final position is calculated, see `PMI_SEEK_*` constants below.
-- EBX: File handle.
-- ECX: New read/write position, relative to the origin specified by AL. This is a signed 32-bit value, for example to move position back by 256 bytes, set AL to `PMI_SEEK_CURPOS` and ECX = -256.
+- `AL`: Origin from which the final position is calculated, see `PMI_SEEK_*` constants below.
+- `EBX`: File handle.
+- `ECX`: New read/write position, relative to the origin specified by `AL`. This is a signed 32-bit value, for example to move position back by 256 bytes, set `AL` to `PMI_SEEK_CURPOS` and `ECX` to `-256`.
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF set or new read/write position of the file.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` set or new read/write position of the file.
 
-Possible seek origin (AL) constants:
+Possible seek origin (`AL`) constants:
 
 | value | name              | description |
 | ----- | ----------------- | ----------- |
@@ -783,14 +783,14 @@ Get the current read/write position of the file.
 
 Inputs:
 
-- EBX: File handle.
+- `EBX`: File handle.
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF set or current read/write position of the file.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` set or current read/write position of the file.
 
-This service is equivalent to `file_set_pos` called with AL = `PMI_SEEK_CURPOS`, ECX = 0. It is provided for convenience.
+This service is equivalent to `file_set_pos` called with AL = `PMI_SEEK_CURPOS`, `ECX` = `0`. It is provided for convenience.
 
 ### `file_get_buf`
 
@@ -804,9 +804,9 @@ None.
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF set or linear address of buffer when successful.
-- ECX: Size of the buffer.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` set or linear address of buffer when successful.
+- `ECX`: Size of the buffer.
 
 This service can fail if the buffer was freed and conventional memory was allocated and not enough memory has been left to allocate the buffer.
 
@@ -834,27 +834,27 @@ target peripheral before starting the transfer. Use `mem_alloc` with
 
 Inputs:
 
-- EBX: Physical address of the DMA buffer as returned by mem_alloc. The buffer must be word-aligned for 16-bit DMA transfers. Buffers from mem_alloc are aligned at least on paragraph boundary.
-- ECX: Number of bytes to transfer from the DMA buffer. Must be an even number for 16-bit DMA transfers. Also EBX + ECX cannot cross a 64 KB boundary for 8-bit or 128 KB boundary for 16-bit DMA transfers.
-- DL: DMA channel number (0 - 7).
-- DH: DMA transfer mode flags, see `PMI_DMA_*` constants below.
+- `EBX`: Physical address of the DMA buffer as returned by `mem_alloc`. The buffer must be word-aligned for 16-bit DMA transfers. Buffers from `mem_alloc` are aligned at least on paragraph boundary.
+- `ECX`: Number of bytes to transfer from the DMA buffer. Must be an even number for 16-bit DMA transfers. Also `EBX` + `ECX` cannot cross a 64 KB boundary for 8-bit or 128 KB boundary for 16-bit DMA transfers.
+- `DL`: DMA channel number (0 - 7).
+- `DH`: DMA transfer mode flags, see `PMI_DMA_*` constants below.
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF set.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` set.
 
 Possible values for DMA transfer mode flags (DH) are combinations of:
 
-| value | name           | description |
-| ----- | -------------- | ----------- |
-| 0x04  | PMI_DMA_WRITE  | Data is read from peripheral and written to memory. |
-| 0x08  | PMI_DMA_READ   | Data is read from memory and written to peripheral. |
-| 0x10  | PMI_DMA_AUTO   | Restart DMA transfer automatically if the end of the DMA buffer is reached. Also known as auto-initialized DMA transfer. |
-| 0x20  | PMI_DMA_BACK   | Transfer backwards: DMA transfer starts at the end of the buffer and decrements the address after each transfer. The DMA controller will automatically be programmed so that it starts at the end of the buffer (ie. DMA start address will be EBX + ECX). |
-| 0x00  | PMI_DMA_DEMAND | Demand transfer mode. For peripherals which read data in bursts but may suspend transfer in between. Tape drives and newer floppy controllers with FIFO buffers. |
-| 0x40  | PMI_DMA_SINGLE | Single transfer mode. For peripherals which cannot buffer data and need it one-by-one. This is the usual mode for for ISA sound cards for playback and recording. |
-| 0x80  | PMI_DMA_BLOCK  | Block transfer mode. For peripherals which can buffer entire blocks of data, such as hard disk controllers. |
+| value | name             | description |
+| ----- | ---------------- | ----------- |
+| 0x04  | `PMI_DMA_WRITE`  | Data is read from the peripheral and written to memory. |
+| 0x08  | `PMI_DMA_READ`   | Data is read from memory and written to the peripheral. |
+| 0x10  | `PMI_DMA_AUTO`   | Restart DMA transfer automatically if the end of the DMA buffer is reached. Also known as auto-initialized DMA transfer. |
+| 0x20  | `PMI_DMA_BACK`   | Transfer backwards: DMA transfer starts at the end of the buffer and decrements the address after each transfer. The DMA controller will automatically be programmed so that it starts at the end of the buffer (ie. DMA start address will be `EBX` + `ECX`). |
+| 0x00  | `PMI_DMA_DEMAND` | Demand transfer mode. For peripherals which read data in bursts but may suspend the transfer between them. Tape drives and newer floppy controllers with FIFO buffers. |
+| 0x40  | `PMI_DMA_SINGLE` | Single transfer mode. For peripherals which cannot buffer data and need it one-by-one. This is the usual mode for for ISA sound cards for playback and recording. |
+| 0x80  | `PMI_DMA_BLOCK`  | Block transfer mode. For peripherals which can buffer entire blocks of data, such as hard disk controllers. |
 
 ### `dma_stop`
 
@@ -862,21 +862,21 @@ Stop DMA transfer on a specific DMA channel. The DMA channel will be disabled af
 
 Inputs:
 
-- DL: DMA channel number (0 - 7).
+- `DL`: DMA channel number (0 - 7).
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF set.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` set.
 
 
 # PMI runtime library
 
 The PMI runtime library aims to provide a useful set of utilities for PMI applications. The runtime library is basically just a collection of 32-bit Windows format object files (modules) that you can optionally link with your PMI application and make use of the functions defined in that module.
 
-Linkable Runtime library modules are located in the `rtl` folder and the respective API for each module is defined in `src\rtl\api` directory.
+Linkable runtime library modules are located in the `rtl` folder and the respective API for each module is defined in `src\rtl\api` directory.
 
-Unless otherwise noted, the runtime library functions require DS and ES to be set to the flat data selectors and GS:0 to point to the PMI API jump table.
+Unless otherwise noted, the runtime library functions require `DS` and `ES` to be set to the flat data selectors and `GS:0` to point to the PMI API jump table (standard PMI executable runtime environment).
 
 ## `env_arg` module
 
@@ -888,13 +888,13 @@ Setup the module before use. The PMI application needs to call this function onc
 
 Inputs:
 
-- EBX: Linear address of MS-DOS environment variables as provided at application startup.
-- EDI: Linear address of ASCIIZ arguments as provided at application startup.
+- `EBX`: Linear address of MS-DOS environment variables as provided at application startup.
+- `EDI`: Linear address of ASCIIZ arguments as provided at application startup.
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF set.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` set.
 
 ### `env_get_value`
 
@@ -902,12 +902,12 @@ Returns the value of a DOS environment variable.
 
 Inputs:
 
-- ESI: Linear address of ASCIIZ uppercase environment variable name to search for.
+- `ESI`: Linear address of ASCIIZ uppercase environment variable name to search for.
 
 Outputs:
 
-- CF: Set if environment variable not found.
-- ESI: Linear address of ASCIIZ environment variable value if found.
+- `CF`: Set if the environment variable was not found.
+- `ESI`: Linear address of ASCIIZ environment variable value if found.
 
 ### `arg_get_count`
 
@@ -919,7 +919,7 @@ None.
 
 Outputs:
 
-- CL: Number of command line arguments.
+- `CL`: Number of command line arguments.
 
 ### `arg_get`
 
@@ -927,12 +927,12 @@ Get the value of a command line argument by argument position.
 
 Inputs:
 
-- CL: Index of command line argument (0-based).
+- `CL`: Index of command line argument (0-based).
 
 Outputs:
 
-- CF: Set if command line argument not found.
-- ESI: Linear address of ASCIIZ command line argument value if found.
+- `CF`: Set if the command line argument is not present.
+- `ESI`: Linear address of ASCIIZ command line argument value if found.
 
 ### `arg_get_value`
 
@@ -940,12 +940,12 @@ Get value of an argument by its name. Can be used to check for existence of an a
 
 Inputs:
 
-- ESI: Linear address of ASCIIZ command line argument name, including switch character if any.
+- `ESI`: Linear address of ASCIIZ command line argument name, including switch character if any.
 
 Outputs:
 
-- CF: Set if command line argument not found.
-- ESI: Linear address of ASCIIZ command line argument value if found.
+- `CF`: Set if the command line argument is not present.
+- `ESI`: Linear address of ASCIIZ command line argument value if found.
 
 ## `irq` module
 
@@ -963,7 +963,7 @@ Macro parameters:
 
 Outputs:
 
-- AL: Destroyed.
+- `AL`: Destroyed.
 
 ### `irq_enabled`
 
@@ -971,13 +971,13 @@ Checks whether a hardware interrupt is enabled by the interrupt controller.
 
 Inputs:
 
-- CL: IRQ number (0 - 15).
+- `CL`: IRQ number (0 - 15).
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF set.
-- ZF: Set if IRQ is disabled.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` set.
+- `ZF`: Set if IRQ is disabled.
 
 ### `irq_disable`
 
@@ -985,12 +985,12 @@ Disable a hardware interrupt on the interrupt controller. Disabling IRQ 2 also d
 
 Inputs:
 
-- CL: IRQ number (0 - 15).
+- `CL`: IRQ number (0 - 15).
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF set.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` set.
 
 ### `irq_enable`
 
@@ -998,14 +998,14 @@ Enable a hardware interrupt on the interrupt controller.
 
 Inputs:
 
-- CL: IRQ number (0 - 15).
+- `CL`: IRQ number (0 - 15).
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF set.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` set.
 
-If IRQ 2 was disabled and the IRQ to enable is between 8 and 15, IRQ 2 will be enabled and all IRQs between 8 and 15 except the one which is to be enabled (CL) will be disabled.
+If IRQ 2 was disabled and the IRQ to enable is between 8 and 15, IRQ 2 will be enabled and all IRQs between 8 and 15 except the one which is to be enabled (`CL`) will be set to disabled.
 
 ## `keyboard` module
 
@@ -1019,7 +1019,7 @@ The keyboard module uses keycodes to represent a specific key on the keyboard. T
 
 Translation of keycodes to ASCII codes is implemented via translation tables for specific keyboard layouts (see `kbd_set_layout` function).
 
-Dedicated keys on keyboard:
+Dedicated keys on the keyboard:
 
 | value | name              | key |
 | ----- | ----------------- | --- |
@@ -1218,7 +1218,7 @@ In addition, the following masking constants are defined:
 
 ### `kbd_start`
 
-Start the keyboard module. Real mode code which relies on DOS/BIOS keyboard services won't receive any keystrokes as long as the protected mode handler is installed. Use `kbd_stop` before calling a real mode procedure requiring keyboard input.
+Start the keyboard module. Real mode code which relies on DOS/BIOS keyboard services won't receive any keystrokes as long as the protected mode handler is installed. Use `kbd_stop` before calling a real mode procedure that requires keyboard input.
 
 Inputs:
 
@@ -1226,8 +1226,8 @@ None.
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF set.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` set.
 
 ### `kbd_stop`
 
@@ -1239,8 +1239,8 @@ None.
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF set.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` set.
 
 ### `kbd_set_layout`
 
@@ -1248,8 +1248,8 @@ Setup a specific keyboard layout. By default, the runtime library uses US ASCII 
 
 Inputs:
 
-- EAX: Linear address of keyboard ASCII translation table (set to 0 to use US ASCII), see definition below.
-- EBX: Linear address of keypad ASCII translation table (set to 0 to use US ASCII), see definition below.
+- `EAX`: Linear address of keyboard ASCII translation table (set to 0 to use US ASCII), see definition below.
+- `EBX`: Linear address of keypad ASCII translation table (set to 0 to use US ASCII), see definition below.
 
 Outputs:
 
@@ -1296,7 +1296,7 @@ None.
 
 Outputs:
 
-- ZF: Set if no event is available, clear otherwise.
+- `ZF`: Set if no event is available, clear otherwise.
 
 ### `kbd_get_event`
 
@@ -1308,12 +1308,12 @@ None.
 
 Outputs:
 
-- ZF: Set if no event is available, clear otherwise.
-- AL: ASCII code of the keyboard event. 0 if the key cannot be translated to an ASCII code.
-- AH: Keycode (see `KC_*` constants).
-- EBX: State of modifiers at the time of the event (see `KBD_*` constants).
-- DL: Keyboard event (see `KBD_EVT_*` constants below).
-- DH: Virtual keycode for some non-ASCII keys (see table below).
+- `ZF`: Set if no event is available, clear otherwise.
+- `AL`: ASCII code of the keyboard event. `0` if the key cannot be translated to an ASCII code.
+- `AH`: Keycode (see `KC_*` constants).
+- `EBX`: State of modifiers at the time of the event (see `KBD_*` constants).
+- `DL`: Keyboard event (see `KBD_EVT_*` constants below).
+- `DH`: Virtual keycode for some non-ASCII keys (see table below).
 
 Possible values for keyboard events:
 
@@ -1352,7 +1352,7 @@ None.
 
 Outputs:
 
-- EBX: Current state of modifiers (see `KBD_*` constants).
+- `EBX`: Current state of modifiers (see `KBD_*` constants).
 
 ## `log` module
 
@@ -1402,8 +1402,8 @@ Macro parameters:
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if failed.
+- `CF`: Set if failed.
+- `EAX`: Error code if failed.
 
 Possible values of `flags` are combination of:
 
@@ -1441,7 +1441,7 @@ Macro parameters:
 
 Requires `systimer` module.
 
-The profiler module allows rough performance profiling of code. It's useful during development or to detect CPU overload situations. It uses `systimer`'s 1024 Hz resolution clock or the timestamp counter on Pentium and newer processors. The profiler's accuracy is in the millisecond range when using `systimer`, and nanosecond range when using the timestamp counter.
+The profiler module allows rough performance profiling of the code. It's useful during development or to detect CPU overload situations. It uses `systimer`'s 1024 Hz resolution clock or the timestamp counter on Pentium and newer processors. The profiler's accuracy is in the millisecond range when using `systimer`, and nanosecond range when using the timestamp counter.
 
 You should not make assumptions about the profiler's accuracy. Always compare the ticks elapsed during the routine under profiling against the ticks elapsed during a known timeframe (such as vertical sync, sound card IRQ or `systimer` tick).
 
@@ -1449,7 +1449,7 @@ The resolution of the timestamp counter can be configured with the `TSC_RESOLUTI
 
 ### `profiler_start`
 
-Sets up and initializes the profiler. Call this at the start of the application.
+Setup and initialize the profiler. Call this at the start of the application.
 
 Inputs:
 
@@ -1457,8 +1457,8 @@ None.
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF is set.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` is set.
 
 Error `PMI_E_INV_IRQ` is returned if the hardware does not support RTC periodic IRQs (and hence `systimer` and `profiler` are not available.)
 
@@ -1466,7 +1466,7 @@ This will also start `systimer`. If the application already uses `systimer`, the
 
 ### `profiler_stop`
 
-Stops the profiler.
+Stop the profiler.
 
 Inputs:
 
@@ -1474,8 +1474,8 @@ None.
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF is set.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` is set.
 
 ### `profiler_get_counter`
 
@@ -1487,7 +1487,7 @@ None.
 
 Outputs:
 
-- EAX: Current value of the profiler performance counter.
+- `EAX`: Current value of the profiler performance counter.
 
 The returned value is 0 if the profiler is not available or has not been started.
 
@@ -1501,11 +1501,11 @@ Get the number of characters (length) of a string.
 
 Inputs:
 
-- ESI: Linear address of the ASCIIZ string.
+- `ESI`: Linear address of the ASCIIZ string.
 
 Outputs:
 
-- ECX: Number of characters (length) in the string.
+- `ECX`: Number of characters (length) in the string.
 
 ### `str_reverse`
 
@@ -1513,7 +1513,7 @@ Reverse a string in place.
 
 Inputs:
 
-- ESI: Linear address of the ASCIIZ string.
+- `ESI`: Linear address of the ASCIIZ string.
 
 Outputs:
 
@@ -1525,9 +1525,9 @@ Copy a string to a target memory area.
 
 Inputs:
 
-- ECX: Maximum number of characters to copy from the source string. Set it to the size of the target buffer - 1 to prevent overflow if the source string is longer than the destination area.
-- ESI: Linear address of the ASCIIZ string to copy.
-- EDI: Linear address of the memory area to where the string shall be copied to.
+- `ECX`: Maximum number of characters to copy from the source string. Set it to the size of the target buffer - 1 to prevent overflow if the source string is longer than the destination area.
+- `ESI`: Linear address of the ASCIIZ string to copy.
+- `EDI`: Linear address of the memory area to where the string shall be copied to.
 
 Outputs:
 
@@ -1539,9 +1539,9 @@ Append a string to another one, in place.
 
 Inputs:
 
-- ECX: Maximum number of characters in the appended string. Set it to the size of the destination string buffer - 1 to prevent overflow if the concatenated string would be longer than the memory block.
-- ESI: Linear address of the ASCIIZ string to append.
-- EDI: Linear address of the ASCIIZ string to which the string shall be appended to.
+- `ECX`: Maximum number of characters in the appended string. Set it to the size of the destination string buffer - 1 to prevent overflow if the concatenated string would be longer than the memory block.
+- `ESI`: Linear address of the ASCIIZ string to append.
+- `EDI`: Linear address of the ASCIIZ string to which the string shall be appended to.
 
 Outputs:
 
@@ -1553,14 +1553,14 @@ Get the position of the first occurence of a character in a string.
 
 Inputs:
 
-- AH: Character to search for.
-- ECX: Maximum number of characters to search in the string. Set to -1 to search until the end of the string, regardless its size.
-- ESI: Linear address of the ASCIIZ string to search.
+- `AH`: Character to search for.
+- `ECX`: Maximum number of characters to search in the string. Set to -1 to search until the end of the string, regardless its size.
+- `ESI`: Linear address of the ASCIIZ string to search.
 
 Outputs:
 
-- CF: Set if the character was not found, clear otherwise.
-- EAX: 0-based index of the character's first occurence if found (CF is not set).
+- `CF`: Set if the character was not found, clear otherwise.
+- `EAX`: 0-based index of the character's first occurence if found (`CF` is not set).
 
 ### `str_char_rpos`
 
@@ -1568,14 +1568,14 @@ Get the position of the last occurence of a character in a string.
 
 Inputs:
 
-- AH: Character to search for.
-- ECX: Maximum number of characters to search in the string. Set to -1 to search until the end of the string, regardless its size.
-- ESI: Linear address of the ASCIIZ string to search.
+- `AH`: Character to search for.
+- `ECX`: Maximum number of characters to search in the string. Set to -1 to search until the end of the string, regardless its size.
+- `ESI`: Linear address of the ASCIIZ string to search.
 
 Outputs:
 
-- CF: Set if the character was not found, clear otherwise.
-- EAX: 0-based index of the character's last occurence if found (CF is not set).
+- `CF`: Set if the character was not found, clear otherwise.
+- `EAX`: 0-based index of the character's last occurence if found (CF is not set).
 
 ### `str_cmp`
 
@@ -1583,9 +1583,9 @@ Compare strings by ASCII code.
 
 Inputs:
 
-- ECX: Maximum number of characters to compare. Set to -1 to compare the entire strings, regardless of their sizes.
-- ESI: Linear address of the source ASCIIZ string to compare.
-- EDI: Linear address of the target ASCIIZ string to compare.
+- `ECX`: Maximum number of characters to compare. Set to -1 to compare the entire strings, regardless of their sizes.
+- `ESI`: Linear address of the source ASCIIZ string to compare.
+- `EDI`: Linear address of the target ASCIIZ string to compare.
 
 Outputs:
 
@@ -1597,9 +1597,9 @@ Convert a 32-bit signed or unsigned integer to a string.
 
 Inputs:
 
-- EAX: Integer to convert.
-- BL: Conversion mode, see `STR_CV_SIGNED` and `STR_CV_UNSIGNED` constants below.
-- ESI: Linear address of buffer receiving ASCIIZ result. It must be at least 11 bytes long for unsigned and 12 bytes for signed integers.
+- `EAX`: Integer to convert.
+- `BL`: Conversion mode, see `STR_CV_SIGNED` and `STR_CV_UNSIGNED` constants below.
+- `ESI`: Linear address of buffer receiving ASCIIZ result. It must be at least 11 bytes long for unsigned and 12 bytes for signed integers.
 
 Outputs:
 
@@ -1618,11 +1618,11 @@ Convert a 32-bit signed or unsigned fixed point number to a string.
 
 Inputs:
 
-- EAX: Number to convert.
-- BL: Conversion mode, see `STR_CV_SIGNED` and `STR_CV_UNSIGNED` constants in `str_int`.
-- BH: Number of decimals in converted string (last digit will be rounded).
-- ECX: Fixed point base, value which represents 1.
-- ESI: Linear address of buffer receiving ASCIIZ result. It must be long enough to accomodate the entire string. To be safe, it should be at least 13 bytes (sign, 10 characters integer part, decimal dot, terminator NUL) plus number of decimals specified in BH large.
+- `EAX`: Number to convert.
+- `BL`: Conversion mode, see `STR_CV_SIGNED` and `STR_CV_UNSIGNED` constants in `str_int`.
+- `BH`: Number of decimals in converted string (last digit will be rounded).
+- `ECX`: Fixed point base, value which represents 1.
+- `ESI`: Linear address of buffer receiving ASCIIZ result. It must be long enough to accomodate the entire string. To be safe, it should be at least 13 bytes (sign, 10 characters integer part, decimal dot, terminator NUL) plus number of decimals specified in BH large.
 
 Outputs:
 
@@ -1634,10 +1634,10 @@ Convert a 32-bit value to a hexadecimal string.
 
 Inputs:
 
-- EAX: Integer to convert.
-- BL: Letter casing, see `STR_CV_LOWER` and `STR_CV_UPPER` constants below.
-- BH: Number of nibbles to convert from least significant to most significant (0 - 8). Set to 8 to convert the entire value.
-- ESI: Linear address of buffer receiving ASCIIZ result. It must be at least 11 bytes long for unsigned and 12 bytes for signed integers.
+- `EAX`: Integer to convert.
+- `BL`: Letter casing, see `STR_CV_LOWER` and `STR_CV_UPPER` constants below.
+- `BH`: Number of nibbles to convert from least significant to most significant (0 - 8). Set to 8 to convert the entire value.
+- `ESI`: Linear address of buffer receiving ASCIIZ result. It must be at least 11 bytes long for unsigned and 12 bytes for signed integers.
 
 Outputs:
 
@@ -1658,16 +1658,16 @@ This function is not particularly optimized. Use individual format conversion fu
 
 Inputs:
 
-- ECX: Maximum number of characters to copy to the target buffer.
-- ESI: Linear address of the source ASCIIZ string with tokens to copy.
-- EDI: Linear address of buffer receiving ASCIIZ result. It must be long enough to accomodate the entire result string.
-- EBP: Linear address of stack area pointing just above the first token value.
+- `ECX`: Maximum number of characters to copy to the target buffer.
+- `ESI`: Linear address of the source ASCIIZ string with tokens to copy.
+- `EDI`: Linear address of buffer receiving ASCIIZ result. It must be long enough to accomodate the entire result string.
+- `EBP`: Linear address of stack area pointing just above the first token value.
 
 Outputs:
 
 None.
 
-Token values are 32-bit entries pushed to the stack. EBP should point to just above the entires. Token values must always be 32-bit, even if the printed value is 8 or 16-bit only. `str_format` will ignore the rest of the upper bits in these cases. For example to print AL, you can safely push EAX and use `{i8}` token to print the 8-bit integer in AL, regardless of the contents of the upper 24 bits in EAX.
+Token values are 32-bit entries pushed to the stack. `EBP` should point to just above the entires. Token values must always be 32-bit, even if the printed value is 8 or 16-bit only. `str_format` will ignore the rest of the upper bits in these cases. For example to print `AL`, you can safely push `EAX` and use `{i8}` token to print the 8-bit integer in `AL`, regardless of the contents of the upper 24 bits in `EAX`.
 
 Supported tokens in the source string:
 
@@ -1724,14 +1724,14 @@ Parse a signed integer from a string to a 32-bit integer.
 
 Inputs:
 
-- BL: Terminator character. If this character is found while parsing the number, the number parsed so far will be returned without considering the rest of the string. Set to 0 to parse to the end of the string.
-- BH: Maximum number of characters to take into consideration for the conversion.
-- ESI: Linear address of the numeric ASCIIZ string to parse.
+- `BL`: Terminator character. If this character is found while parsing the number, the number parsed so far will be returned without considering the rest of the string. Set to 0 to parse to the end of the string.
+- `BH`: Maximum number of characters to take into consideration for the conversion.
+- `ESI`: Linear address of the numeric ASCIIZ string to parse.
 
 Outputs:
 
-- CF: Set if the number was invalid (contains a non-numeric character or overflows 32 bits).
-- EAX: Parsed number if successful.
+- `CF`: Set if the number was invalid (contains a non-numeric character or overflows 32 bits).
+- `EAX`: Parsed number if successful.
 
 ### `str_parse_fixed`
 
@@ -1739,15 +1739,15 @@ Parse a signed number from a string to a 32-bit fixed point value.
 
 Inputs:
 
-- BL: Terminator character. If this character is found while parsing the number, the number parsed so far will be returned without considering the rest of the string. Set to 0 to parse to the end of the string.
-- BH: Maximum number of characters to take into consideration for the conversion.
-- ECX: Fixed point base, value which represents 1.
-- ESI: Linear address of the numeric ASCIIZ string to parse.
+- `BL`: Terminator character. If this character is found while parsing the number, the number parsed so far will be returned without considering the rest of the string. Set to 0 to parse to the end of the string.
+- `BH`: Maximum number of characters to take into consideration for the conversion.
+- `ECX`: Fixed point base, value which represents 1.
+- `ESI`: Linear address of the numeric ASCIIZ string to parse.
 
 Outputs:
 
-- CF: Set if the number was invalid (contains a non-numeric character or overflows 32 bits).
-- EAX: Parsed fixed point number if successful.
+- `CF`: Set if the number was invalid (contains a non-numeric character or overflows 32 bits).
+- `EAX`: Parsed fixed point number if successful.
 
 ### `str_parse_hex`
 
@@ -1755,14 +1755,14 @@ Parse a hexadecimal string to a 32-bit integer.
 
 Inputs:
 
-- BL: Terminator character. If this character is found while parsing the number, the number parsed so far will be returned without considering the rest of the string. Set to 0 to parse to the end of the string.
-- BH: Maximum number of characters to take into consideration for the conversion.
-- ESI: Linear address of the numeric ASCIIZ string to parse.
+- `BL`: Terminator character. If this character is found while parsing the number, the number parsed so far will be returned without considering the rest of the string. Set to 0 to parse to the end of the string.
+- `BH`: Maximum number of characters to take into consideration for the conversion.
+- `ESI`: Linear address of the numeric ASCIIZ string to parse.
 
 Outputs:
 
-- CF: Set if the number was invalid (contains a non-hexadecimal character or overflows 32 bits).
-- EAX: Parsed number if successful.
+- `CF`: Set if the number was invalid (contains a non-hexadecimal character or overflows 32 bits).
+- `EAX`: Parsed number if successful.
 
 ## `systimer` module
 
@@ -1772,7 +1772,7 @@ This module uses the real time clock IRQ (8) to generate a periodic tick 1024 ti
 
 ### `systimer_start`
 
-Initializes the module, sets up the protected mode real-time clock IRQ handler. The module maintains a reference count, subsequent calls to this function will only increase the number of references.
+Initialize the module, setup the protected mode real-time clock IRQ handler. The module maintains a reference count, subsequent calls to this function will only increase the number of references.
 
 Inputs:
 
@@ -1780,14 +1780,14 @@ None.
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF set.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` set.
 
 Error `PMI_E_INV_IRQ` is returned if the hardware does not support RTC periodic IRQs (and hence `systimer` is not available.)
 
 ### `systimer_stop`
 
-Stops the timer. The module maintains a reference count, the timer won't be stopped until the same amount of calls have been made to `systimer_stop` as to `systimer_start` previously.
+Stop the timer. The module maintains a reference count, the timer won't be stopped until the same amount of calls have been made to `systimer_stop` as to `systimer_start` previously.
 
 Inputs:
 
@@ -1795,8 +1795,8 @@ None.
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF set.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` set.
 
 ### `systimer_ticks`
 
@@ -1808,19 +1808,19 @@ Register a callback procedure which is executed after a certain amount of systim
 
 Inputs:
 
-- EAX: Number of ticks until the callback is executed.
-- EBX: Linear address of the callback procedure.
+- `EAX`: Number of ticks until the callback is executed.
+- `EBX`: Linear address of the callback procedure.
 
 Outputs:
 
-- CF: Set if no callback slots are available.
-- EAX: Handle of the callback (for `systimer_clear_timeout`) or 0 if CF is set.
+- `CF`: Set if no callback slots are available.
+- `EAX`: Handle of the callback (for `systimer_clear_timeout`) or 0 if `CF` is set.
 
-This function only requires DS to be set to the flat data segment.
+This function only requires `DS` to be set to the flat data segment.
 
-Callbacks are a scarce resource, make sure to not overuse them. By default, `systimer` provides 32 callback slots, but this can be increased up to 255 by chaning the `CALLBACK_COUNT` constant in `src\rtl\systimer.asm` and recompiling PMI. Note, that increasing the count will add some processing overhead to the IRQ 8 handler.
+Callbacks are a scarce resource, make sure to not overuse them. By default, `systimer` provides 32 callback slots, but this can be increased up to 255 by changing the `CALLBACK_COUNT` constant in `src\rtl\systimer.asm` and recompiling PMI. Note, that increasing the count will add some processing overhead to the IRQ 8 handler.
 
-Callbacks are called from an IRQ context with interrupts enabled and hence should be designed to comply with all rules regarding IRQ handlers. `systimer` will set DS to flat data segment selector, but other segment registers will be undefined and the handler must set them accordingly when required. By the time the callback is invoked, it is already removed from the callback pool. Make sure the callback is not doing too much processing since it blocks the main thread of your application. It is recommended to set a trigger flag which is watched by the application's main loop and does the heavy lifting.
+Callbacks are called from an IRQ context with interrupts enabled and hence should be designed to comply with all rules regarding IRQ handlers. `systimer` will set `DS` to flat data segment selector, but other segment registers will be undefined and the handler must set them accordingly when required. By the time the callback is invoked, it is already removed from the callback pool. Make sure the callback is not doing too much processing since it blocks the main thread of your application. It is recommended to set a trigger flag which is watched by the application's main loop and does the heavy lifting.
 
 ### `systimer_clear_timeout`
 
@@ -1828,13 +1828,13 @@ Cancel a scheduled callback procedure.
 
 Inputs:
 
-- EAX: Handle of the callback.
+- `EAX`: Handle of the callback.
 
 Outputs:
 
-- CF: Set if the handle is invalid or it was already triggered.
+- `CF`: Set if the handle is invalid or it was already triggered.
 
-This function only requires DS to be set to the flat data segment.
+This function only requires `DS` to be set to the flat data segment.
 
 ## `timer` module
 
@@ -1848,12 +1848,12 @@ The PIT can only generate timer interrupts at certain intervals. This function c
 
 Inputs:
 
-- EDX: Requested timer interrupt frequency (Hz).
+- `EDX`: Requested timer interrupt frequency (Hz).
 
 Outputs:
 
-- EAX: Actual nearest timer interrupt frequency rounded to nearest integer (Hz).
-- BX: PIT reload value for `timer_set_rate`.
+- `EAX`: Actual nearest timer interrupt frequency rounded to nearest integer (Hz).
+- `BX`: PIT reload value for `timer_set_rate`.
 
 ### `timer_set_rate`
 
@@ -1861,7 +1861,7 @@ Set the frequency of timer interrupts (IRQ 0).
 
 Inputs:
 
-- BX: PIT reload value as returned by `timer_calc_rate`.
+- `BX`: PIT reload value as returned by `timer_calc_rate`.
 
 Outputs:
 
@@ -1881,7 +1881,7 @@ None.
 
 ### `timer_start`
 
-Starts an AT BIOS compatible protected mode timer IRQ handler to prevent mode switches to real mode for handling default IRQ 0 activities. This will prevent any custom real mode extensions/TSRs built on the timer interrupt from running.
+Start an AT BIOS compatible protected mode timer IRQ handler to prevent mode switches to real mode for handling default IRQ 0 activities. This will prevent any custom real mode extensions/TSRs relying on the real mode timer interrupt from running.
 
 Inputs:
 
@@ -1889,12 +1889,12 @@ None.
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF is set.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` is set.
 
 ### `timer_stop`
 
-Stops the protected mode timer IRQ handler and restores the original real mode IRQ redirector.
+Stop the protected mode timer IRQ handler and restore the original real mode IRQ redirector.
 
 Inputs:
 
@@ -1902,8 +1902,8 @@ None.
 
 Outputs:
 
-- CF: Set if failed.
-- EAX: Error code if CF is set.
+- `CF`: Set if failed.
+- `EAX`: Error code if `CF` is set.
 
 
 # Technical details
@@ -1912,16 +1912,16 @@ Outputs:
 
 Depending on the current DOS environment, PMI can operate in one of the following three modes:
 
-- Raw: the processor is in real mode before PMI was started. PMI uses XMS or BIOS extended memory services to allocate the largest extended memory block and uses its own internal mode switch routines. If real mode code (such as DOS services) need to be executed, PMI switches the CPU back to real mode, runs the service, switches back to flat model protected mode and transfers control back to your application. Paging is never enabled in this mode. This is the preferred mode of operation since both real and protected mode are under full control of PMI.
+- Raw: the processor is in real mode before PMI was started. PMI uses XMS or BIOS extended memory services to allocate the largest extended memory block and uses its own internal mode switch routines. If real mode code (such as DOS services) need to be executed, PMI switches the CPU to real mode, runs the service, then goes to flat model protected mode and gives control back to your application. Paging is never enabled in this mode. This is the preferred mode of operation since both real and protected mode are under full control of PMI.
 
-- VCPI: the processor is in V86 mode and a VCPI host is available. This is a common scenario when an EMS manager such as EMM386 is installed. V86 is a special mode of the 80386 and newer processors that simulates a 80386 processor in real mode, while keeping a supervisor's (the VCPI host, like EMM386) finger at the heartbeat of the program running in V86 mode. The supervisor may intercept several actions, such as I/O port or memory access and do funky stuff like emulating hardware or swapping memory in and out of memory ranges. It's not possible to enter protected mode natively in V86 mode. VCPI is a standard interface that enables programs like PMI to request supervisor-level protected mode access and coexist with the current protected mode supervisor and it's V86 mode. Under VCPI, PMI uses XMS or VCPI memory allocation functions to allocate extended memory (XMS is preferred). VCPI normally requires paging, but PMI can disable paging under certain conditions (see below). When running in protected mode and paging disabled, performance is equivalent to raw mode. VCPI is slower in real (V86) mode and mode switches will take somewhat longer (largely depending on the VCPI host).
+- VCPI: the processor is in V86 mode and a VCPI host is available. This is a common scenario when an EMS manager such as EMM386 is installed. V86 is a special mode of the 80386 and newer processors that simulates a 80386 processor in real mode, while keeping a supervisor's (the VCPI host, like EMM386) finger at the heartbeat of the program running in V86 mode. The supervisor may intercept several actions, such as I/O port or memory access and do funky stuff like emulating hardware or swapping memory in and out of memory ranges. It's not possible to enter protected mode natively from V86 mode. VCPI is a standard interface that enables programs like PMI to request supervisor-level protected mode access and coexist with the current protected mode supervisor and it's V86 mode. Under VCPI, PMI uses XMS or VCPI memory allocation functions to allocate extended memory (XMS is preferred). VCPI normally requires paging, but PMI can disable paging under certain conditions (see below). When running in protected mode and paging disabled, performance is equivalent to raw mode. VCPI is slower in real (V86) mode and mode switches will take somewhat longer (by how much depends largely on the VCPI host's implementation).
 
-- DPMI: DPMI is the successor of VCPI. It's a more advanced host for protected mode programs. When the processor runs in V86 mode and VCPI is not available, but DPMI is, PMI will use it for setting up the protected mode environment for the PMI application. DPMI hosts can be wildly different. Some may be only thin wrappers above VCPI or a raw environment and may be very fast while others may be feature-rich solutions with virtual memory, multitasking and hardware virtualization. Needless to say, DPMI is the least preferred mode of operation for PMI. The sole purpose of DPMI support in PMI is to add compatibility with Windows DOS boxes.
+- DPMI: DPMI is the successor of VCPI. It's a more advanced host for protected mode programs. When the processor runs in V86 mode and the host is not VCPI compatible, but DPMI is available, PMI will use it for setting up the protected mode environment for the PMI application. DPMI hosts can be wildly different. Some may be only thin wrappers above VCPI or a raw environment and may be very fast while others may be feature-rich solutions with virtual memory, multitasking and hardware virtualization. Needless to say, DPMI is the least preferred mode of operation for PMI. The sole purpose of DPMI support in PMI is to add compatibility with Windows DOS boxes. The protected mode environment and mode switches are fully managed by the DPMI host, PMI only acts as a thin wrapper on top of the DPMI API.
 
 A somewhat unique feature (at least I haven't heard of any other DOS extenders doing the same) is the ability to run without paging under VCPI. This mode is only possible if all of the following conditions are met:
 
-- Extended memory can be allocated and locked using XMS memory manager.
-- The VCPI host uses identity mapping for memory below 640 KB. In other words, the linear addresses are identical to physical addresses.
+- Extended memory can be allocated and locked using the XMS memory manager.
+- The VCPI host uses identity mapping for memory below 640 KB. In other words, the linear addresses must be identical to physical addresses in the conventional memory range.
 - The application is loaded to memory below 640 KB (not using loadhigh).
 
 This might sound restrictive, but when EMS is provided using MS-DOS HIMEM.SYS and EMM386.EXE, the above conditions are met as long as the PMI application is not loaded into UMB (which DOS won't do unless explicitly requested).
@@ -1938,13 +1938,13 @@ PMI supports the following methods of extended memory allocations:
 
 - XMS: This mode uses the XMS manager's XMS 2.0 API to query, allocate and lock the largest extended memory block. If the process fails, PMI won't use extended memory. XMS 2.0 limits the size of the memory block to 64 MB. Adding support for XMS 3.0 should not be too hard, but it wasn't deemed necessary. This allocation method is used when the CPU is in real mode or V86 mode with a VCPI host.
 
-- VCPI: This mode is used if a VCPI host is present and XMS allocation failed. VCPI memory allocation is much slower, than XMS since 4 KB pages are allocated one-by-one using an API call to the VCPI host. This mode also requires paging to be enabled (see below). The maximum amount of extended memory is limited to around 64 MB but this can be changed with PMI compile time configuration parameters. The VCPI host is used to switch between real (V86) and protected mode.
+- VCPI: This mode is used if a VCPI host is present and XMS allocation failed. VCPI memory allocation is much slower, than XMS since 4 KB pages are allocated one-by-one using an API call to the VCPI host. This mode also requires paging to be enabled (see below). The maximum amount of extended memory is limited to around 64 MB but this can be changed with PMI compile time configuration parameters.
 
-- DPMI: When running in DPMI mode, DPMI is used to query the largest lockable extended memory block which is then allocated and locked during PMI startup. This might be a slow procedure, depending on the DPMI host. The maximum amount of extended memory is limited to around 64 MB but this can be changed with PMI compile time configuration parameters. PMI will not reserve up to 1/16th of lockable region to leave some breathing room to the DPMI server and other applications in a multitasked environment. This can also be changed with a PMI compile time configuration parameter. The DPMI host is used to enter protected mode and then DPMI services are used to simulate real mode far calls and interrupts.
+- DPMI: When running in DPMI mode, DPMI is used to query the largest lockable extended memory block which is then allocated and locked during PMI startup. This might be a slow procedure, depending on the DPMI host. The maximum amount of extended memory is limited to around 64 MB but this can be changed with PMI compile time configuration parameters. PMI will not allocate up to 1/16th of the lockable region to leave some breathing room for the DPMI server and other applications in a multitasked environment. (This can be changed with a PMI compile time configuration parameter.)
 
-Paging is enabled in VCPI mode if the application is loaded to UMB or if XMS allocation fails. Paging slows down protected mode execution a bit, although it will still be much faster, than V86 mode. PMI stores all page tables in conventional memory, which uses 4 KB for each allocated 4 MB. PMI will make sure to add VCPI page tables under 16 MB physical memory address in ascending physical address to allow reservation of DMA buffers for the `mem_alloc` service. For DMA buffer allocations, the `mem_alloc` service will check page tables to meet ISA DMA compatibility requirements. Page tables are used optimally, the remaining page table entries in the first page table will also be used for extended memory mapping (VCPI host usually only populate about 1/4 of the first page table, leaving room for almost 3 MB of linear address space). Paging is also enabled if XMS allocation succeeds, but the application was loaded into UMB. Page table entries will be generated from the XMS block's physical address in this case. Under DPMI, paging may or may not be enabled, depending on the DPMI host.
+Paging is enabled in VCPI mode if the application is loaded to UMB or if XMS allocation fails. Paging slows down protected mode execution a bit, although it will still be much faster, than V86 mode. PMI stores all page tables in conventional memory, which uses 4 KB for each allocated 4 MB. PMI will make sure to add VCPI page tables under 16 MB physical memory address in ascending physical address to allow reservation of DMA buffers for the `mem_alloc` service. For DMA buffer allocations, the `mem_alloc` service will check page tables to meet ISA DMA compatibility requirements. Page tables are used optimally, the remaining page table entries in the first page table will also be used for extended memory mapping (VCPI host usually only populate about a quarter of the first page table, leaving room for almost 3 MB of linear address space). Paging is also enabled if XMS allocation succeeds, but the application was loaded into UMB. Page table entries will be generated from the XMS block's physical address in this case. Under DPMI, paging may or may not be enabled, depending on the DPMI host implementation.
 
-Free conventional memory is also allocated for PMI applications during startup. Under DPMI however, PMI will leave up to 1/8 of available conventional memory free for the DPMI host and other applications in a multitasking environment.
+Free conventional memory is also allocated for PMI applications during startup. Under DPMI however, PMI will leave up to 1/8 of available conventional memory free for the DPMI host and other applications in a multitasking environment. (This can be changed with a PMI compile time configuration parameter.)
 
 ## Exception handling
 
@@ -1953,10 +1953,10 @@ Exceptions are handled by the DPMI host when running under DPMI. Otherwise PMI w
 PMI's debug version will also print an exception dump before exiting when not running under DPMI. The dump contains:
 
 - The name and hexadecimal number of the exception.
-- The CS:EIP pointer and its linear address at the time of the exception.
+- The `CS:EIP` pointer and its linear address at the time of the exception.
 - The fault code of the exception (when present and not zero).
-- Hexadecimal selector, base, limit and access byte of segment registers CS, DS, ES, FS, GS and SS.
-- Hexadecimal values of general registers EAX, EBX, ECX, EDX, ESI, EDI, EBP and ESP.
+- Hexadecimal selector, base, limit and access byte of segment registers `CS`, `DS`, `ES`, `FS`, `GS` and `SS`.
+- Hexadecimal values of general registers `EAX`, `EBX`, `ECX`, `EDX`, `ESI`, `EDI`, `EBP` and `ESP`.
 - The top 64 bytes of the stack at the time of the exception.
 
 Applications cannot install custom exception handlers.
@@ -1973,7 +1973,7 @@ However once a protected mode IRQ handler is installed, these real mode interrup
 
 PMI installs a very tiny prologue for IRQs 7 and 15 to handle spurious IRQs. This prologue is also installed under DPMI even though many DPMI hosts already deal with the problem internally. Unfortunately, this is not mandated by the specification, so it wouldn't be safe to not check this scenario under DPMI as well. The overhead is minimal and the frequency of these IRQs is not very high so it's an acceptable tradeoff.
 
-PMI won't setup flat memory model data segment registers for IRQ handlers automatically, the application must do it within the handler itself as needed. Remember that the PMI API requires flat data selectors for DS and ES and the PMI runtime library also requires GS:0 to point to the PMI API jump table. But you should not really call any of them from an IRQ handler.
+PMI won't setup flat memory model data segment registers for IRQ handlers automatically, the application must do it within the handler itself as needed. Remember that the PMI API requires flat data selectors for `DS` and `ES` and the PMI runtime library also requires `GS:0` to point to the PMI API jump table. But you should not really call any of them from an IRQ handler.
 
 ## System registers, tables
 
@@ -1981,9 +1981,9 @@ PMI does not support selector manipulation for applications. It's not necessary 
 
 In raw and VCPI mode, PMI sets up only a GDT with the bare minimum of required selectors.
 
-In raw and VCPI mode, PMI manages the protected mode IDT. The IDT itself has entries for all 256 interrupts, but only exceptions and hardware interrupt vectors are used, the rest are dummy pointers to a simple iretd. Hardware interrupt handlers are set up as 32-bit interrupt gates (interrupt flag will be clear on entering the handler), other interrupts are set up as 32-bit task gates (interrupt flag won't be changed).
+In raw and VCPI mode, PMI manages the protected mode IDT. The IDT itself has entries for all 256 interrupts, but only exceptions and hardware interrupt vectors are used, the rest are dummy pointers to a simple `iretd`. Hardware interrupt handlers are set up as 32-bit interrupt gates (interrupt flag will be clear on entering the handler), other interrupts are set up as 32-bit task gates (interrupt flag won't be changed).
 
-Task switching is not used by PMI, but a task state segment is provided in VCPI mode for the VCPI host, as required by the VCPI API. How it is used depends on the VCPI host itself.
+Task switching is not used by PMI, but a task state segment is provided in VCPI mode for the VCPI host, as mandated by the VCPI API. How it is used depends on the VCPI host itself.
 
 In DPMI mode, the DPMI host manages the GDT and LDT and it may use only the GDT or both GDT and LDT. PMI sets up the required selectors using DPMI services. IDT and task handling is under the DPMI host's control. PMI uses DPMI services to set hardware interrupt handlers.
 
@@ -2000,11 +2000,11 @@ PMI can be configured to better conform with the requirements of your applicatio
 
 - `VCPI_MIN_LOW_KB`: The amount of conventional memory to leave free after allocating VCPI memory in kilobytes. This is only effective if paging must be used in VCPI mode, where each allocated 4 MB will consume 4 KB of conventional memory. This may limit the amount of available extended memory if the available conventional memory in DOS is too low (although this is highly unlikely). The default value is `256`.
 
-- `DPMI_MAX_MEM_MB`: The maximum amount of memory allocated and locked in DPMI mode in megabytes. The default value is `64`. If you application does not require so much extended memory, it might be a good idea to reduce this amount to leave more room for other DPMI applications in a multitasking environment. It also reduces the chance of startup failures due to the DPMI host refusing to lock a large amount of extended memory.
+- `DPMI_MAX_MEM_MB`: The maximum amount of memory allocated and locked in DPMI mode in megabytes. The default value is `64`. If you application does not require that much extended memory, it might be a good idea to reduce this amount to leave more room for other DPMI applications in a multitasking environment. It also reduces the chance of startup failures due to the DPMI host refusing to lock a large amount of extended memory.
 
-- `DPMI_EXT_RSV_MB`: The maximum amount of extended memory which won't be allocated in DPMI mode, even if the DPMI host reports that it's possible. Value is in megabytes, the default is `2`. PMI will only reserve 15/16th of the reported lockable memory. This parameter controls the maximum amount that is not reserved (the 1/16th of reported lockable memory). Set this to 0 to reserve all lockable memory.
+- `DPMI_EXT_RSV_MB`: The maximum amount of extended memory which won't be allocated in DPMI mode, even if the DPMI host reports that it's possible. Value is in megabytes, the default is `2`. PMI will only allocate 15/16th of the reported lockable memory. This parameter controls the maximum amount that is not reserved (the 1/16th of reported lockable memory). Set this to 0 to reserve all lockable memory.
 
-- `DPMI_LOW_RSV_KB`: The maximum amount of conventional memory which won't be allocated in DPMI mode, in kilobytes. Defaults to `64`. Similar to `DPMI_EXT_RSV_MB`, but for memory below 1 MB. PMI will only reserve 7/8th of available conventional memory and leave 1/8th, up to the amount defined in this parameter free. Set it to 0 to reserve all conventional memory.
+- `DPMI_LOW_RSV_KB`: The maximum amount of conventional memory which won't be allocated in DPMI mode, in kilobytes. Defaults to `64`. Similar to `DPMI_EXT_RSV_MB`, but for memory below 1 MB. PMI will only allocate 7/8th of available conventional memory and leave 1/8th, up to the amount defined in this parameter free. Set it to 0 to reserve all conventional memory.
 
 - `DPMI_PREFERRED`: Flag to set host preference in V86 mode when both VCPI and DPMI hosts are available. When set to 0, VCPI mode will be used, when set to 1, PMI will use DPMI mode. Defaults to `0` (VCPI preferred).
 
@@ -2019,7 +2019,7 @@ To build a custom `pmi.exe` binary:
 - Install [NASM](https://nasm.us).
 - Install [Open Watcom](https://www.openwatcom.org/) tools.
 - Copy `makeinit.sam` to `makeinit` and set the following parameters:
-  - `nasm_dir`: Path to directory containing nasm.exe (NASM binary).
+  - `nasm_dir`: Path to directory containing `nasm.exe` (NASM binary).
   - `watcom_dir`: Path to directory containing Open Watcom platform-dependent binaries.
   - If both of them are added to system `PATH`, you don't need to create a `makeinit` file.
 - Run `wmake` to create a debug-enabled build to `build\debug\pmi.exe` and to compile the runtime library to `build\debug\rtl`.
@@ -2034,7 +2034,7 @@ To test PMI:
 - Under DOS:
   - Run `make.bat` to create a debug-enabled build and execute it.
 - Under Windows versions without proper DOS boxes:
-  - Install DosBox-X.
+  - Install [DosBox-X](https://dosbox-x.com/).
   - Copy `emu\env_bat.sam` to `emu\env.bat` and adjust the `dosbox` environment variable to point to the DosBox-X binary according to your install location.
   - Run `makedb.bat` to create a debug-enabled build and execute it under DosBox-X.
 
