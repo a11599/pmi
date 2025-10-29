@@ -1,6 +1,6 @@
 /build
 /dist
 /tools
-/makeinit
 /test.bat
-/emu/env.bat
+/dosbox.conf
+/env

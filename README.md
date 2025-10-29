@@ -137,7 +137,7 @@ When the news are about AI writing code by itself, it's time to show the middle 
 This isn't new, in fact this was the standard at the end of the DOS era and pretty much the only standard in current operating systems. PMI was written for multiple reasons:
 
 - 32-bit PE format support was either missing from most other protected mode hosts or supported the old DJGPP format only. I wanted to use Windows NT PE format.
-- Many hosts that do support 32-bit PE format use CPU features that aren't emulated well by DosBox (and thus won't work reliably).
+- Many hosts that do support 32-bit PE format use CPU features that aren't emulated well by DOSBox (and thus won't work reliably).
 - Most hosts implement the DPMI API and have a built-in DOS extender. Many even support stuff such as virtual memory, DLL loading or some kind of Win32 API emulation (especially those that support 32-bit PE executables). I don't want any of that bloat.
 - None of them can run under VCPI with paging disabled as far as I know. It was an old trick I used in my early-2000s DOS extenders and I wanted to do it again because it feels good.
 - None of them have built-in support for DMA addressable memory block allocation.
@@ -250,7 +250,7 @@ PMI was meant for applications written in assembly language. My choice of assemb
 - It is free.
 - It is in active development and has been for decades.
 - It uses Intel syntax.
-- It is cross-platform (my primary development platform is DosBox on Windows, but I also want it to compile under DOS).
+- It is cross-platform.
 - It has good local label support and a useful macro language.
 
 The assembly source code is compiled to Win32 object format. This allows keeping the source code very clean from segment directives.
@@ -2012,31 +2012,31 @@ PMI can be configured to better conform with the requirements of your applicatio
 
 ## Building a custom PMI stub
 
-PMI can be built under DOS and Windows. It should also be possible to build under other platforms, but the current build environment supports these two only.
+PMI can be built under DOS, Windows and Linux. It should also be possible to build under other platforms, but the current build environment supports these three only.
 
 To build a custom `pmi.exe` binary:
 
 - Install [NASM](https://nasm.us).
-- Install [Open Watcom](https://www.openwatcom.org/) tools.
-- Copy `makeinit.sam` to `makeinit` and set the following parameters:
-  - `nasm_dir`: Path to directory containing `nasm.exe` (NASM binary).
-  - `watcom_dir`: Path to directory containing Open Watcom platform-dependent binaries.
-  - If both of them are added to system `PATH`, you don't need to create a `makeinit` file.
-- Run `wmake` to create a debug-enabled build to `build\debug\pmi.exe` and to compile the runtime library to `build\debug\rtl`.
-- Run `wmake build=release` to create a release build to `build\release\pmi.exe` and to compile the runtime library to `build\release\rtl`.
-- Further `wmake` targets (append after `wmake` or `wmake build=release`) are:
+- Install [Open Watcom](https://www.openwatcom.org/) tools. For DOS and Windows you can use the 1.9 "final" release, for Linux you need to install a v2 release from the [GitHub releases page](https://github.com/open-watcom/open-watcom-v2/releases). If the Linux x64 installer does not work, just use the x86 version, but make sure to select the appropriate x64 host target.
+- Copy `env.lin` on Linux, `env.win` on Windows or `env.dos` on DOS to `env` and adjust the following parameters:
+  - `NASM_BIN`: Path to NASM executable (usually `nasm` on Linux, `nasm.exe` on Windows and DOS). If `nasm` is added to the path, the parameter can be left empty.
+  - `WATCOM_BIN_DIR` (Linux and Windows only): Path to directory containing Open Watcom platform-dependent binaries. If the directory is added to the path, the parameter can be left empty.
+- (DOS only) The directory containing the Open Watcom platform-dependent binaries MUST be added to the PATH.
+- Change the current directory to the project folder, then run `./make.sh` on Linux or `make.bat` on Windows and DOS (further referred to as `make`) to create a debug-enabled build to `build\debug\pmi.exe` and to compile the runtime library to `build\debug\rtl`.
+- Add the `build=release` parameter to create a release build to `build\release\pmi.exe` and to compile the runtime library to `build\release\rtl`.
+- Further build targets (append after `make` or `make build=release`) are:
   - `clean`: Remove compiled binaries in `build\debug` or `build\release` directory.
   - `full`: Force a full recompilation (compilation by default is incremental, only changed source code is recompiled).
   - `dist`: Create a binary distribution package to `dist` directory.
 
 To test PMI:
-- Copy `test_bat.sam` to `test.bat`
-- Under DOS:
-  - Run `make.bat` to create a debug-enabled build and execute it.
-- Under Windows versions without proper DOS boxes:
-  - Install [DosBox-X](https://dosbox-x.com/).
-  - Copy `emu\env_bat.sam` to `emu\env.bat` and adjust the `dosbox` environment variable to point to the DosBox-X binary according to your install location.
-  - Run `makedb.bat` to create a debug-enabled build and execute it under DosBox-X.
+
+- On Linux and Windows:
+  - Install DOSBox. [DOSBox-X](https://dosbox-x.com/) or [DOSBox Staging](https://www.dosbox-staging.org/) is preferred because they are actively developed, but plain old [DOSBox](https://www.dosbox.com/) should also work.
+  - Set `DOSBOX_BIN` in `env` to the path of the DOSBox executable. If `dosbox` is added to the path, the parameter can be left empty.
+  - If you want to use custom DOSBox options, create `dosbox.conf` and set your configuration overrides.
+- Copy `test_bat.sam` to `test.bat`.
+- Run `./make.sh db` on Linux or `make.bat db` on Windows and DOS to create a debug-enabled build and execute it.
 
 PMI should display the following message:
 
@@ -2044,4 +2044,4 @@ PMI should display the following message:
 :( Cannot load protected mode program
 ```
 
-To test DPMI mode under DOS, set the `DPMI_PREFERRED` setting in `config.inc` to `1` and uncomment `lib\cwsdpmi` in `test.bat`. You can also try other DPMI hosts, but be aware that many of them have issues with DosBox-X, unrelated to PMI. CWSDPMI seems to work fine. If you run into issues, make sure to test on real hardware or a more accurate emulator such as [Bochs](https://bochs.sourceforge.io/) first.
+To test DPMI mode under DOS, set the `DPMI_PREFERRED` setting in `config.inc` to `1` and uncomment `lib\cwsdpmi` in `test.bat`. You can also try other DPMI hosts, but be aware that many of them have issues with DOSBox, unrelated to PMI. CWSDPMI seems to work fine. If you run into issues, make sure to test on real hardware or a more accurate emulator such as [Bochs](https://bochs.sourceforge.io/) first.
