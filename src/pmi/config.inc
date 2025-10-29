@@ -52,5 +52,8 @@ IO_BUF_SIZE	EQU 0xfff0		; I/O buffer size in bytes
 ;------------------------------------------------------------------------------
 
 %ifenv EXCEPTIONS
+%defstr EXCEPTIONS_FLAG %!EXCEPTIONS
+%ifidni EXCEPTIONS_FLAG, '1'
 %define DEBUG_EXCEPTIONS
+%endif
 %endif
